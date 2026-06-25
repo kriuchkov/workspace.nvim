@@ -1,0 +1,169 @@
+{
+  "plugins": {
+    "LuaSnip": {
+      "rev": "642b0c595e11608b4c18219e93b88d7637af27bc",
+      "src": "ssh://git@github.com/L3MON4D3/LuaSnip"
+    },
+    "barbar.nvim": {
+      "rev": "337ecfadb8bf005050990bf2f624dc4fc828dabd",
+      "src": "ssh://git@github.com/romgrk/barbar.nvim"
+    },
+    "blink.cmp": {
+      "rev": "78336bc89ee5365633bcf754d93df01678b5c08f",
+      "src": "ssh://git@github.com/saghen/blink.cmp"
+    },
+    "claudecode.nvim": {
+      "rev": "e6c9dd4d4f144910b0066489100ad94b7133821f",
+      "src": "ssh://git@github.com/coder/claudecode.nvim"
+    },
+    "cmp-buffer": {
+      "rev": "b74fab3656eea9de20a9b8116afa3cfc4ec09657",
+      "src": "https://github.com/hrsh7th/cmp-buffer"
+    },
+    "cmp-nvim-lsp": {
+      "rev": "cbc7b02bb99fae35cb42f514762b89b5126651ef",
+      "src": "https://github.com/hrsh7th/cmp-nvim-lsp"
+    },
+    "cmp-path": {
+      "rev": "c642487086dbd9a93160e1679a1327be111cbc25",
+      "src": "https://github.com/hrsh7th/cmp-path"
+    },
+    "cmp_luasnip": {
+      "rev": "98d9cb5c2c38532bd9bdb481067b20fea8f32e90",
+      "src": "https://github.com/saadparwaiz1/cmp_luasnip"
+    },
+    "conform.nvim": {
+      "rev": "619363c30309d29ffa631e67c8183f2a72caa373",
+      "src": "ssh://git@github.com/stevearc/conform.nvim"
+    },
+    "crates.nvim": {
+      "rev": "694357861ec9ebf12475ddcdd04ea45a0923c32d",
+      "src": "ssh://git@github.com/saecki/crates.nvim"
+    },
+    "diffview.nvim": {
+      "rev": "4516612fe98ff56ae0415a259ff6361a89419b0a",
+      "src": "ssh://git@github.com/sindrets/diffview.nvim"
+    },
+    "fidget.nvim": {
+      "rev": "82404b196e73a00b1727a91903beef5ddc319d22",
+      "src": "ssh://git@github.com/j-hui/fidget.nvim"
+    },
+    "gitsigns.nvim": {
+      "rev": "25050e4ed39e628282831d4cbecb1850454ce915",
+      "src": "ssh://git@github.com/lewis6991/gitsigns.nvim"
+    },
+    "go.nvim": {
+      "rev": "0768d79bbebdb1a112a845f9cd6293bfbd544dab",
+      "src": "ssh://git@github.com/ray-x/go.nvim"
+    },
+    "guess-indent.nvim": {
+      "rev": "84a4987ff36798c2fc1169cbaff67960aed9776f",
+      "src": "ssh://git@github.com/NMAC427/guess-indent.nvim"
+    },
+    "guihua.lua": {
+      "rev": "f8e06bd8a26dee3377d63c2adf1e57cdb58ac474",
+      "src": "ssh://git@github.com/ray-x/guihua.lua"
+    },
+    "lazygit.nvim": {
+      "rev": "a04ad0dbc725134edbee3a5eea29290976695357",
+      "src": "ssh://git@github.com/kdheepak/lazygit.nvim"
+    },
+    "lualine.nvim": {
+      "rev": "221ce6b2d999187044529f49da6554a92f740a96",
+      "src": "https://github.com/nvim-lualine/lualine.nvim"
+    },
+    "mason-lspconfig.nvim": {
+      "rev": "21c5b3ebeaa0412e28096bb0701434c51c1fbf76",
+      "src": "ssh://git@github.com/mason-org/mason-lspconfig.nvim"
+    },
+    "mason-tool-installer.nvim": {
+      "rev": "443f1ef8b5e6bf47045cb2217b6f748a223cf7dc",
+      "src": "ssh://git@github.com/WhoIsSethDaniel/mason-tool-installer.nvim"
+    },
+    "mason.nvim": {
+      "rev": "2a6940af80375532e5e9e7c1f2fc6319a1b7a69d",
+      "src": "ssh://git@github.com/mason-org/mason.nvim"
+    },
+    "mini.icons": {
+      "rev": "e56797f90192d81f1fda02e662fc3e8e3d775027",
+      "src": "https://github.com/echasnovski/mini.icons"
+    },
+    "mini.nvim": {
+      "rev": "bf8169f3e518be8de3f88073ace37d91f576cb04",
+      "src": "ssh://git@github.com/nvim-mini/mini.nvim"
+    },
+    "neo-tree.nvim": {
+      "rev": "83e7a2982fd12b9c3d35bc39dd5877cd91a02a61",
+      "src": "ssh://git@github.com/nvim-neo-tree/neo-tree.nvim",
+      "version": ">=0.0.0"
+    },
+    "nui.nvim": {
+      "rev": "de740991c12411b663994b2860f1a4fd0937c130",
+      "src": "ssh://git@github.com/MunifTanjim/nui.nvim"
+    },
+    "nvim-autopairs": {
+      "rev": "7b9923abad60b903ece7c52940e1321d39eccc79",
+      "src": "https://github.com/windwp/nvim-autopairs"
+    },
+    "nvim-cmp": {
+      "rev": "a1d504892f2bc56c2e79b65c6faded2fd21f3eca",
+      "src": "https://github.com/hrsh7th/nvim-cmp"
+    },
+    "nvim-lspconfig": {
+      "rev": "a683e0ddf0cf64c6cd689e18ffb480ade3c162b7",
+      "src": "ssh://git@github.com/neovim/nvim-lspconfig"
+    },
+    "nvim-treesitter": {
+      "rev": "4916d6592ede8c07973490d9322f187e07dfefac",
+      "src": "ssh://git@github.com/nvim-treesitter/nvim-treesitter"
+    },
+    "nvim-web-devicons": {
+      "rev": "dfbfaa967a6f7ec50789bead7ef87e336c1fa63c",
+      "src": "ssh://git@github.com/nvim-tree/nvim-web-devicons"
+    },
+    "plenary.nvim": {
+      "rev": "74b06c6c75e4eeb3108ec01852001636d85a932b",
+      "src": "ssh://git@github.com/nvim-lua/plenary.nvim"
+    },
+    "rustaceanvim": {
+      "rev": "a22902f216b068faa311807c9f361c6b1d971367",
+      "src": "ssh://git@github.com/mrcjkb/rustaceanvim"
+    },
+    "snacks.nvim": {
+      "rev": "882c996cf28183f4d63640de0b4c02ec886d01f2",
+      "src": "ssh://git@github.com/folke/snacks.nvim"
+    },
+    "telescope-fzf-native.nvim": {
+      "rev": "b25b749b9db64d375d782094e2b9dce53ad53a40",
+      "src": "ssh://git@github.com/nvim-telescope/telescope-fzf-native.nvim"
+    },
+    "telescope-ui-select.nvim": {
+      "rev": "6e51d7da30bd139a6950adf2a47fda6df9fa06d2",
+      "src": "ssh://git@github.com/nvim-telescope/telescope-ui-select.nvim"
+    },
+    "telescope.nvim": {
+      "rev": "9377230aa5305d9e9aca4ed8dadf1070fb4aa9fc",
+      "src": "ssh://git@github.com/nvim-telescope/telescope.nvim"
+    },
+    "todo-comments.nvim": {
+      "rev": "31e3c38ce9b29781e4422fc0322eb0a21f4e8668",
+      "src": "ssh://git@github.com/folke/todo-comments.nvim"
+    },
+    "toggleterm.nvim": {
+      "rev": "9a88eae817ef395952e08650b3283726786fb5fb",
+      "src": "ssh://git@github.com/akinsho/toggleterm.nvim"
+    },
+    "tokyonight.nvim": {
+      "rev": "cdc07ac78467a233fd62c493de29a17e0cf2b2b6",
+      "src": "ssh://git@github.com/folke/tokyonight.nvim"
+    },
+    "trouble.nvim": {
+      "rev": "bd67efe408d4816e25e8491cc5ad4088e708a69a",
+      "src": "ssh://git@github.com/folke/trouble.nvim"
+    },
+    "which-key.nvim": {
+      "rev": "3aab2147e74890957785941f0c1ad87d0a44c15a",
+      "src": "ssh://git@github.com/folke/which-key.nvim"
+    }
+  }
+}

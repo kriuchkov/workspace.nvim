@@ -1,0 +1,5 @@
+require 'claudespace.plugins.core'
+require 'claudespace.plugins.git'
+require 'claudespace.plugins.ui'
+require 'claudespace.plugins.langs'
+require 'claudespace.plugins.claude'
