@@ -24,6 +24,7 @@ local S = {
   git_map      = {},   -- abs_path → status char
   git_root     = nil,
   ignored_set  = {},   -- abs_path → true  (gitignored dirs/files, for subtree propagation)
+  _sticky      = false, -- true = auto-reopen if window is force-closed
 }
 
 -- ── Git ───────────────────────────────────────────────────────────────────────
@@ -50,15 +51,20 @@ local function refresh_git()
   end
 end
 
+-- Pure: returns true when path is a descendant of any entry in ignored_set
+local function is_ignored(path, ignored_set)
+  for ignored_path in pairs(ignored_set) do
+    if path:sub(1, #ignored_path + 1) == ignored_path .. '/' then
+      return true
+    end
+  end
+  return false
+end
+
 local function git_hl(path)
   if not S.git_root then return nil end
   if S.git_map[path] then return GIT_HL[S.git_map[path]] end
-  -- Propagate: if any parent dir is in ignored_set, this path is also ignored
-  for ignored_path in pairs(S.ignored_set) do
-    if path:sub(1, #ignored_path + 1) == ignored_path .. '/' then
-      return 'CSTreeGitIgn'
-    end
-  end
+  if is_ignored(path, S.ignored_set) then return 'CSTreeGitIgn' end
   return nil
 end
 
@@ -92,26 +98,98 @@ local function scan(dir, depth)
   return entries
 end
 
+-- ── Icons ─────────────────────────────────────────────────────────────────────
+
+local FALLBACK_ICONS = {
+  lua='', py='', go='', rs='', ts='󰛦', js='', sh='',
+  md='', json='', yaml='', yml='', toml='', txt='',
+  vim='', css='', html='', c='', cpp='', h='',
+  png='', jpg='', svg='', gif='',
+  zip='', gz='', tar='', lock='',
+}
+
+local function get_file_icon(name, is_dir, expanded)
+  if is_dir then
+    return expanded and '▾ ' or '▸ ', 'CSTreeDirIcon'
+  end
+  -- Use mini.icons for the glyph only — always apply CSTreeFileIcon (no rainbow bg/fg)
+  local ok, icon = pcall(function()
+    local i = MiniIcons.get('file', name)  ---@diagnostic disable-line
+    return i
+  end)
+  if ok and icon then return icon .. ' ', 'CSTreeFileIcon' end
+  local ext = name:match('%.([^.]+)$') or ''
+  return (FALLBACK_ICONS[ext] or '') .. ' ', 'CSTreeFileIcon'
+end
+
 -- ── Rendering ─────────────────────────────────────────────────────────────────
+
+-- Pure: mark e.is_last on every entry so render() can draw indent guides.
+-- An entry is "last" when it has no future sibling at the same depth —
+-- scanning forward through deeper children until the depth returns to or above e.depth.
+local function compute_is_last(entries)
+  for i, e in ipairs(entries) do
+    local has_sibling = false
+    for j = i + 1, #entries do
+      if entries[j].depth == e.depth then
+        has_sibling = true; break
+      elseif entries[j].depth < e.depth then
+        break  -- returned to an ancestor level, no sibling possible
+      end
+    end
+    e.is_last = not has_sibling
+  end
+end
 
 local function render()
   if not (S.buf and api.nvim_buf_is_valid(S.buf)) then return end
   S.entries = scan(S.root, 0)
+  compute_is_last(S.entries)
 
-  local hidden_hint = not S.show_hidden and '  (·hidden)' or ''
-  local lines = { ' ' .. fn.fnamemodify(S.root, ':~') .. hidden_hint }
-  local hls   = {}
+  -- Header: icon + project name (bold), dimmer full path below
+  local project  = fn.fnamemodify(S.root, ':t')
+  local fullpath = fn.fnamemodify(S.root, ':~')
+  local hint     = not S.show_hidden and '  ·hidden' or ''
+  local lines = {
+    ' 󰉋 ' .. project .. hint,
+    '  ' .. fullpath,
+  }
+  local hls = {}
   local function hi(ln, cs, ce, grp) table.insert(hls, { ln, cs, ce, grp }) end
 
-  for _, e in ipairs(S.entries) do
-    local pad      = string.rep('  ', e.depth + 1)
-    local icon     = e.is_dir and (S.expanded[e.path] and '▼ ' or '▶ ') or '  '
-    lines[#lines+1] = pad .. icon .. e.name
+  hi(0, 0, -1, 'CSTreeRoot')
+  hi(1, 0, -1, 'CSTreePath')
+
+  for idx, e in ipairs(S.entries) do
+    -- Build indent: guide chars for each ancestor level
+    local indent = ' '
+    for d = 0, e.depth - 1 do
+      -- Find nearest ancestor at depth d (look backwards)
+      local ancestor_is_last = true
+      for j = idx - 1, 1, -1 do
+        if S.entries[j].depth == d then
+          ancestor_is_last = S.entries[j].is_last
+          break
+        end
+      end
+      indent = indent .. (ancestor_is_last and '  ' or '│ ')
+    end
+
+    -- Connector: ├ or └ (only for depth > 0)
+    local connector = e.depth == 0 and '  '
+                   or (e.is_last     and '└ ' or '├ ')
+
+    local icon, icon_hl = get_file_icon(e.name, e.is_dir, S.expanded[e.path])
+    local line = indent .. connector .. icon .. e.name
+    lines[#lines + 1] = line
 
     local ln       = #lines - 1
-    local name_col = #pad + #icon
-    hi(ln, #pad, name_col, e.is_dir and 'CSTreeDir' or 'CSTreeFile')
-    hi(ln, name_col, name_col + #e.name, git_hl(e.path) or (e.is_dir and 'CSTreeDir' or 'CSTreeFile'))
+    local icon_col = #indent + #connector
+    local name_col = icon_col + #icon
+    hi(ln, 0, icon_col, 'CSTreeGuide')   -- dim the entire structural prefix
+    hi(ln, icon_col, name_col, icon_hl)
+    hi(ln, name_col, name_col + #e.name,
+       git_hl(e.path) or (e.is_dir and 'CSTreeDir' or 'CSTreeFile'))
   end
 
   api.nvim_set_option_value('modifiable', true,  { buf = S.buf })
@@ -125,10 +203,40 @@ end
 
 -- ── Actions ───────────────────────────────────────────────────────────────────
 
+local HEADER_LINES = 2  -- project name + full path
+
 local function entry_at_cursor()
   if not (S.win and api.nvim_win_is_valid(S.win)) then return end
   local row = api.nvim_win_get_cursor(S.win)[1]
-  return S.entries[row - 1]   -- line 1 = root header
+  return S.entries[row - HEADER_LINES]
+end
+
+-- Find a non-tree editor window, or create one to the right of the tree.
+-- Dirdash/home windows count as valid targets — they get replaced by the file.
+local REPLACEABLE_FT = { cs_dirdash = true, cs_home = true }
+
+local function editor_win()
+  -- Prefer a real editor window first
+  for _, w in ipairs(api.nvim_list_wins()) do
+    if w ~= S.win and api.nvim_win_is_valid(w)
+      and vim.bo[api.nvim_win_get_buf(w)].buftype == '' then
+      return w
+    end
+  end
+  -- Fall back to a replaceable panel (dirdash / home screen)
+  for _, w in ipairs(api.nvim_list_wins()) do
+    if w ~= S.win and api.nvim_win_is_valid(w)
+      and REPLACEABLE_FT[vim.bo[api.nvim_win_get_buf(w)].filetype] then
+      return w
+    end
+  end
+  -- No suitable window — create a vertical split to the right of the tree
+  local cur = api.nvim_get_current_win()
+  api.nvim_set_current_win(S.win)
+  vim.cmd('rightbelow vsplit')
+  local new_win = api.nvim_get_current_win()
+  api.nvim_set_current_win(cur)
+  return new_win
 end
 
 local function open_or_expand()
@@ -138,16 +246,7 @@ local function open_or_expand()
     S.expanded[e.path] = not S.expanded[e.path] or nil
     render()
   else
-    -- Open in the first non-tree window
-    local wins = vim.tbl_filter(function(w)
-      return w ~= S.win and api.nvim_win_is_valid(w)
-        and vim.bo[api.nvim_win_get_buf(w)].buftype == ''
-    end, api.nvim_list_wins())
-    if wins[1] then
-      api.nvim_set_current_win(wins[1])
-    else
-      vim.cmd 'wincmd p'
-    end
+    api.nvim_set_current_win(editor_win())
     vim.cmd('noswapfile edit ' .. fn.fnameescape(e.path))
   end
 end
@@ -344,13 +443,20 @@ function M.open(root)
   wo.signcolumn     = 'no'
   wo.cursorline     = true
   wo.winfixwidth    = true
+  wo.winfixbuf      = true   -- Neovim 0.10+: prevents any buffer replacement in this window
   wo.scrolloff      = 0
   wo.winbar         = ''
 
+  -- Auto-reopen if the window is closed by any means other than M.close()
   api.nvim_create_autocmd('WinClosed', {
     pattern  = tostring(S.win),
     once     = true,
-    callback = function() S.win = nil end,
+    callback = function()
+      S.win = nil
+      if S._sticky and S.buf and api.nvim_buf_is_valid(S.buf) then
+        vim.schedule(M.open)
+      end
+    end,
   })
 
   refresh_git()
@@ -358,6 +464,7 @@ function M.open(root)
 end
 
 function M.close()
+  S._sticky = false   -- intentional close — don't auto-reopen
   if S.win and api.nvim_win_is_valid(S.win) then
     api.nvim_win_close(S.win, true)
   end
@@ -365,7 +472,12 @@ function M.close()
 end
 
 function M.toggle()
-  if S.win and api.nvim_win_is_valid(S.win) then M.close() else M.open() end
+  if S.win and api.nvim_win_is_valid(S.win) then
+    M.close()
+  else
+    S._sticky = true  -- reopened manually — stay sticky
+    M.open()
+  end
 end
 
 function M.reveal()
@@ -388,7 +500,7 @@ function M.reveal()
 
   for i, e in ipairs(S.entries) do
     if e.path == file then
-      api.nvim_win_set_cursor(S.win, { i + 1, 0 })
+      api.nvim_win_set_cursor(S.win, { i + HEADER_LINES, 0 })
       break
     end
   end
@@ -398,19 +510,47 @@ end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
-  hi(0, 'CSTreeDir',    { fg = '#7aa2f7', bold = true })
-  hi(0, 'CSTreeFile',   { fg = '#c0caf5' })
-  hi(0, 'CSTreeGitMod', { fg = '#e0af68' })
-  hi(0, 'CSTreeGitAdd', { fg = '#9ece6a' })
-  hi(0, 'CSTreeGitDel', { fg = '#f7768e' })
-  hi(0, 'CSTreeGitNew', { fg = '#73daca' })
-  hi(0, 'CSTreeGitIgn', { fg = '#565f89' })
-  hi(0, 'CSTreeGitCon', { fg = '#f7768e', bold = true })
+  -- Header
+  hi(0, 'CSTreeRoot',     { fg = '#c0caf5', bold = true })
+  hi(0, 'CSTreePath',     { fg = '#3b4166' })
+  -- Tree entries
+  hi(0, 'CSTreeGuide',    { fg = '#24283b' })  -- structural chars: │ ├ └ connectors
+  hi(0, 'CSTreeDirIcon',  { fg = '#7aa2f7' })
+  hi(0, 'CSTreeDir',      { fg = '#7aa2f7', bold = true })
+  hi(0, 'CSTreeFile',     { fg = '#9aa5ce' })
+  hi(0, 'CSTreeFileIcon', { fg = '#3d4574' })  -- single subdued colour for all file icons
+  -- Git status
+  hi(0, 'CSTreeGitMod',  { fg = '#e0af68' })
+  hi(0, 'CSTreeGitAdd',  { fg = '#9ece6a' })
+  hi(0, 'CSTreeGitDel',  { fg = '#f7768e' })
+  hi(0, 'CSTreeGitNew',  { fg = '#73daca' })
+  hi(0, 'CSTreeGitIgn',  { fg = '#3b4166' })
+  hi(0, 'CSTreeGitCon',  { fg = '#f7768e', bold = true })
 end
 
 function M.setup()
   setup_highlights()
   api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+
+  -- Guard: if any non-tree buffer lands in the tree window, redirect it
+  api.nvim_create_autocmd('BufWinEnter', {
+    callback = function()
+      if not (S.win and api.nvim_win_is_valid(S.win)) then return end
+      if api.nvim_get_current_win() ~= S.win then return end
+      local buf = api.nvim_get_current_buf()
+      if buf == S.buf then return end
+      -- A foreign buffer opened in the tree window — move it out
+      local path = api.nvim_buf_get_name(buf)
+      -- Restore tree in its window immediately
+      pcall(api.nvim_win_set_buf, S.win, S.buf)
+      -- Then open the file in a proper editor window
+      if path ~= '' and fn.filereadable(path) == 1 then
+        local ew = editor_win()
+        api.nvim_set_current_win(ew)
+        pcall(vim.cmd, 'noswapfile edit ' .. fn.fnameescape(path))
+      end
+    end,
+  })
   api.nvim_create_autocmd('BufWritePost', {
     callback = function()
       if S.win and api.nvim_win_is_valid(S.win) then refresh_git(); render() end
@@ -418,5 +558,16 @@ function M.setup()
   })
   vim.keymap.set('n', '\\', M.reveal, { silent = true, desc = 'File tree' })
 end
+
+-- ── Test exports (pure functions only, no UI) ─────────────────────────────────
+M._test = {
+  HEADER_LINES    = HEADER_LINES,
+  compute_is_last = compute_is_last,
+  is_ignored      = is_ignored,
+  -- entry index → buffer row
+  entry_to_row    = function(idx) return idx + HEADER_LINES end,
+  -- buffer row → entry index (nil when cursor is on a header line)
+  row_to_entry    = function(row) local i = row - HEADER_LINES; return i > 0 and i or nil end,
+}
 
 return M

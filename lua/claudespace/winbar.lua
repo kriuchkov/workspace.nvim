@@ -15,9 +15,9 @@ end
 
 local function setup_highlights()
   local hi = vim.api.nvim_set_hl
-  -- Slightly darker than editor (#1a1b26) → visible stripe between tabline and content
-  hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#0f1117' })
-  hi(0, 'CSWinbarFile', { fg = '#9aa5ce', bg = '#0f1117', bold = true })
+  -- Stripe between tabline border and editor content
+  hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#13151f' })
+  hi(0, 'CSWinbarFile', { fg = '#a9b1d6', bg = '#13151f', bold = true })
 end
 
 local SKIP_FT = { cs_filetree = true, cs_dirdash = true, cs_outline = true,

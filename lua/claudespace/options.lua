@@ -1,5 +1,17 @@
 local o = vim.opt
 
+-- Russian ЙЦУКЕН → Latin QWERTY keyboard-position mapping.
+-- Allows all Normal/Visual/Command keymaps to work with Russian locale active.
+-- Does NOT affect Insert mode — see im-select.nvim in plugins/core.lua for that.
+o.langmap = table.concat({
+  'й;q','ц;w','у;e','к;r','е;t','н;y','г;u','ш;i','щ;o','з;p',
+  'ф;a','ы;s','в;d','а;f','п;g','р;h','о;j','л;k','д;l',
+  'я;z','ч;x','с;c','м;v','и;b','т;n','ь;m',
+  'Й;Q','Ц;W','У;E','К;R','Е;T','Н;Y','Г;U','Ш;I','Щ;O','З;P',
+  'Ф;A','Ы;S','В;D','А;F','П;G','Р;H','О;J','Л;K','Д;L',
+  'Я;Z','Ч;X','С;C','М;V','И;B','Т;N','Ь;M',
+}, ',')
+
 -- Disable netrw before it loads (dirdash.lua replaces it)
 vim.g.loaded_netrw       = 1
 vim.g.loaded_netrwPlugin = 1
@@ -48,13 +60,23 @@ o.completeopt = 'menuone,noselect'
 o.pumheight = 10
 
 -- Terminal: prevent scrolloff drift and resize artifacts in TUI apps
-vim.api.nvim_create_autocmd({ 'TermOpen', 'TermEnter', 'BufEnter' }, {
+vim.api.nvim_create_autocmd({ 'TermOpen', 'TermEnter' }, {
   callback = function()
-    if vim.bo.buftype ~= 'terminal' then return end
     vim.wo.scrolloff = 0
     vim.wo.number = false
     vim.wo.relativenumber = false
     vim.wo.signcolumn = 'no'
+  end,
+})
+
+-- Restore number/signcolumn when switching back to a normal buffer
+-- (window-local opts set for terminal persist when the window is reused)
+vim.api.nvim_create_autocmd('BufEnter', {
+  callback = function()
+    if vim.bo.buftype == '' then
+      vim.wo.number = true
+      vim.wo.signcolumn = 'yes'
+    end
   end,
 })
 

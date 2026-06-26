@@ -84,32 +84,30 @@ local function load_session()
 end
 
 local BORDER = '#3b4261'  -- separator colour (tokyonight storm border)
-local RAIL   = '#0d0e16'  -- tab bar rail (darker than editor bg)
-local EDITOR = '#1a1b26'  -- editor bg (also active-tab bg → "raised" effect)
+local RAIL   = '#0d0e16'  -- tab bar rail (darkest)
+local EDITOR = '#1a1b26'  -- editor background
+local ACTIVE = '#24283b'  -- active tab: lighter than editor → clearly pops above it
 
 local function setup_group_hls()
   local hi = vim.api.nvim_set_hl
   for i, c in ipairs(GROUP_COLORS) do
     hi(0, 'CSGroup'  .. i, { bg = c.bg, fg = c.fg, bold = true })
-    -- Inactive grouped tab: group colour as text, rail background
     hi(0, 'CSGroupT' .. i, { bg = RAIL, fg = c.bg })
   end
   hi(0, 'WinSeparator', { fg = BORDER })
 
-  -- Rail: dark background, no underline — clear separation from editor
-  hi(0, 'TabLineFill', { bg = RAIL })
-  -- Inactive tab: recede into the rail; barely readable, not distracting
-  hi(0, 'TabLine',     { bg = RAIL, fg = '#3b4166' })
-  -- Active tab: raised to editor level, bright text, thin blue accent line
-  hi(0, 'TabLineSel',  { bg = EDITOR, fg = '#c0caf5', bold = true,
+  -- Rail: darkest layer; underline draws a thin border below the whole tab bar
+  hi(0, 'TabLineFill', { bg = RAIL, sp = '#2a2d3e', underline = true })
+  -- Inactive: dim text, sunken into rail
+  hi(0, 'TabLine',     { bg = RAIL, fg = '#3b4166', sp = '#2a2d3e', underline = true })
+  -- Active: LIGHTER than editor → floats above it; blue accent replaces the grey separator
+  hi(0, 'TabLineSel',  { bg = ACTIVE, fg = '#c0caf5', bold = true,
                          sp = '#7aa2f7', underline = true })
 
-  -- Close button: always dim, never competes with filename
   hi(0, 'CSTabClose',       { bg = RAIL,   fg = '#252840' })
-  hi(0, 'CSTabCloseActive', { bg = EDITOR, fg = '#3d4574' })
-  -- Modified marker: warm orange stands out clearly
-  hi(0, 'CSTabModified',   { bg = EDITOR, fg = '#e0af68' })
-  hi(0, 'CSTabModifiedNC', { bg = RAIL,   fg = '#5c4a1e' })
+  hi(0, 'CSTabCloseActive', { bg = ACTIVE, fg = '#414868' })
+  hi(0, 'CSTabModified',    { bg = ACTIVE, fg = '#e0af68' })
+  hi(0, 'CSTabModifiedNC',  { bg = RAIL,   fg = '#5c4a1e' })
 end
 
 local function group_hl(gid)

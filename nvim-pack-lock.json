@@ -64,6 +64,10 @@
       "rev": "f8e06bd8a26dee3377d63c2adf1e57cdb58ac474",
       "src": "ssh://git@github.com/ray-x/guihua.lua"
     },
+    "im-select.nvim": {
+      "rev": "963a4e9d528ef8a8d328eeff690593b0146d30e2",
+      "src": "https://github.com/keaising/im-select.nvim"
+    },
     "lazygit.nvim": {
       "rev": "a04ad0dbc725134edbee3a5eea29290976695357",
       "src": "ssh://git@github.com/kdheepak/lazygit.nvim"
