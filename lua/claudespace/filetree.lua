@@ -148,7 +148,7 @@ local function open_or_expand()
     else
       vim.cmd 'wincmd p'
     end
-    vim.cmd('edit ' .. fn.fnameescape(e.path))
+    vim.cmd('noswapfile edit ' .. fn.fnameescape(e.path))
   end
 end
 
@@ -179,7 +179,7 @@ local function open_preview()
   if wins[1] then
     local cur = api.nvim_get_current_win()
     api.nvim_set_current_win(wins[1])
-    vim.cmd('edit ' .. fn.fnameescape(e.path))
+    vim.cmd('noswapfile edit ' .. fn.fnameescape(e.path))
     api.nvim_set_current_win(cur)
   end
 end
