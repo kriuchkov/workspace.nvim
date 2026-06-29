@@ -81,7 +81,9 @@ local function build(unstaged, staged)
   return lines, hls, actions
 end
 
-function M.open()
+-- anchor_win: when given, open as a split to its right (activity-bar panel);
+-- otherwise a centered float.
+function M.open(anchor_win)
   local unstaged, staged = parse_status()
   local lines, hls, actions = build(unstaged, staged)
 
@@ -96,19 +98,30 @@ function M.open()
     api.nvim_buf_add_highlight(buf, ns, h[4], h[1], h[2], h[3])
   end
 
-  local win = api.nvim_open_win(buf, true, {
-    relative = 'editor', style = 'minimal', border = 'rounded',
-    title = ' Git ', title_pos = 'center',
-    width  = math.min(70, vim.o.columns - 4),
-    height = math.min(#lines + 1, math.floor(vim.o.lines * 0.7)),
-    row = math.floor((vim.o.lines - math.min(#lines + 1, math.floor(vim.o.lines * 0.7))) / 2),
-    col = math.floor((vim.o.columns - math.min(70, vim.o.columns - 4)) / 2),
-  })
+  local win
+  if anchor_win and api.nvim_win_is_valid(anchor_win) then
+    api.nvim_set_current_win(anchor_win)
+    vim.cmd 'rightbelow vsplit'
+    win = api.nvim_get_current_win()
+    api.nvim_win_set_buf(win, buf)
+    api.nvim_win_set_width(win, 44)
+    vim.wo[win].winfixwidth = true
+  else
+    win = api.nvim_open_win(buf, true, {
+      relative = 'editor', style = 'minimal', border = 'rounded',
+      title = ' Git ', title_pos = 'center',
+      width  = math.min(70, vim.o.columns - 4),
+      height = math.min(#lines + 1, math.floor(vim.o.lines * 0.7)),
+      row = math.floor((vim.o.lines - math.min(#lines + 1, math.floor(vim.o.lines * 0.7))) / 2),
+      col = math.floor((vim.o.columns - math.min(70, vim.o.columns - 4)) / 2),
+    })
+  end
   vim.wo[win].number = false
   vim.wo[win].cursorline = true
+  M._win = win
 
   local o = { buffer = buf, nowait = true, silent = true }
-  local close = function() pcall(api.nvim_win_close, win, true) end
+  local close = function() pcall(api.nvim_win_close, win, true); M._win = nil end
 
   local function refresh()
     local u2, s2 = parse_status()
@@ -220,8 +233,14 @@ function M.open()
   end, o)
 end
 
+function M.close()
+  if M._win and api.nvim_win_is_valid(M._win) then pcall(api.nvim_win_close, M._win, true) end
+  M._win = nil
+end
+
 function M.setup()
-  vim.keymap.set('n', '<leader>gs', M.open, { desc = 'Git: status / staging' })
+  -- <leader>gG = Git GUI/staging panel (uppercase to distinguish from gitsigns hunks)
+  vim.keymap.set('n', '<leader>gG', function() M.open() end, { desc = 'Git: staging panel', silent = true })
 end
 
 return M

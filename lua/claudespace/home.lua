@@ -130,9 +130,29 @@ function M.setup()
   api.nvim_create_autocmd('VimEnter', {
     once = true,
     callback = function()
-      if fn.argc() ~= 0 then return end
+      -- `nvim .` (единственный аргумент — директория) трактуем как открытие
+      -- проекта и восстанавливаем его воркспейс. С файловыми аргументами
+      -- (`nvim foo.go`) restore не делаем — открываем то, что попросили.
+      local dir
+      if fn.argc() == 1 then
+        local p = fn.fnamemodify(fn.argv(0), ':p')
+        if fn.isdirectory(p) == 1 then dir = (p:gsub('/$', '')) end
+      end
+      if fn.argc() ~= 0 and not dir then return end
+
       vim.schedule(function()
-        local ws   = require('claudespace.workspace')
+        local ws = require('claudespace.workspace')
+        if dir then
+          local name
+          for _, w in ipairs(ws.list()) do
+            if w.cwd and (w.cwd:gsub('/$', '')) == dir then name = w.name break end
+          end
+          -- Нет сохранённого воркспейса для этой папки → пусть dirdash покажет дашборд.
+          if name and fn.filereadable(ws._get_ws_file(name)) == 1 then
+            ws.load(name)
+          end
+          return
+        end
         local last = ws._read_last()
         if last and fn.filereadable(ws._get_ws_file(last)) == 1 then
           ws.load(last)

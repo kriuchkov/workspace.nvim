@@ -34,20 +34,13 @@ M.check = function()
     vim.health.warn 'telescope.nvim not loaded (session picker disabled)'
   end
 
-  -- claude-multi
-  if pcall(require, 'claude-multi') then
-    vim.health.ok 'claude-multi loaded'
-    local ok, state = pcall(require, 'claude-multi.state')
-    if ok then
-      local sessions = state.get_sessions()
-      if #sessions > 0 then
-        vim.health.ok('claude-multi: ' .. #sessions .. ' active session(s)')
-      else
-        vim.health.ok 'claude-multi: no active sessions'
-      end
-    end
+  -- claudespace session manager
+  local ok_cs, cs = pcall(require, 'claudespace.claude.sessions')
+  if ok_cs then
+    local n = #cs.list()
+    vim.health.ok(n > 0 and ('sessions: ' .. n .. ' active') or 'sessions: loaded (no active sessions)')
   else
-    vim.health.error 'claude-multi failed to load'
+    vim.health.error 'claudespace.claude.sessions failed to load'
   end
 
   -- CLAUDE.md

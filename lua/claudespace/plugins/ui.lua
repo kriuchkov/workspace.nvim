@@ -4,70 +4,50 @@ local map = vim.keymap.set
 vim.pack.add { 'https://github.com/folke/tokyonight.nvim' }
 pcall(vim.cmd.colorscheme, 'tokyonight-night')
 
+-- LSP document-highlight: tokyonight рисует эти группы почти невидимо.
+-- Делаем вхождения символа под курсором заметными (фон + подчёркивание),
+-- с различием read/write. Переустанавливаем при каждой смене темы.
+local function lsp_reference_hl()
+  local set = vim.api.nvim_set_hl
+  set(0, 'LspReferenceText',  { bg = '#3b4261', underline = true })
+  set(0, 'LspReferenceRead',  { bg = '#3b4261', underline = true })
+  set(0, 'LspReferenceWrite', { bg = '#54405a', underline = true, bold = true })
+end
+lsp_reference_hl()
+vim.api.nvim_create_autocmd('ColorScheme', { callback = lsp_reference_hl })
+
+-- Go syntax palette: ключевые слова — розово-красные, функции — оранжевые,
+-- типы — голубые, true/false/nil — синие, поля — лавандовые. Через capture-группы
+-- с суффиксом `.go` правки касаются только Go (treesitter highlight).
+local function go_syntax_hl()
+  local set = vim.api.nvim_set_hl
+  local red, orange = '#f7768e', '#ff9e64'
+  local cyan, blue  = '#7dcfff', '#7aa2f7'
+  local green, lav  = '#9ece6a', '#bb9af7'
+  for _, g in ipairs {
+    '@keyword.go', '@keyword.function.go', '@keyword.return.go',
+    '@keyword.repeat.go', '@keyword.conditional.go', '@keyword.operator.go',
+    '@keyword.import.go', '@keyword.coroutine.go',
+  } do set(0, g, { fg = red }) end
+  for _, g in ipairs {
+    '@function.go', '@function.call.go', '@function.method.go', '@function.method.call.go',
+  } do set(0, g, { fg = orange }) end
+  set(0, '@type.go',            { fg = cyan })
+  set(0, '@type.builtin.go',    { fg = cyan })
+  set(0, '@boolean.go',         { fg = blue })
+  set(0, '@constant.builtin.go',{ fg = blue })   -- nil, iota
+  set(0, '@string.go',          { fg = green })
+  set(0, '@variable.member.go', { fg = lav })    -- struct fields: activity.StartTime
+end
+go_syntax_hl()
+vim.api.nvim_create_autocmd('ColorScheme', { callback = go_syntax_hl })
+
 -- Icons (used by neo-tree, lualine, etc.)
 vim.pack.add { 'https://github.com/echasnovski/mini.icons' }
 if pcall(require, 'mini.icons') then
   require('mini.icons').setup()
   MiniIcons.mock_nvim_web_devicons()
 end
-
--- Custom tabline (replaces barbar — we own the lifecycle)
-require('claudespace.tabline').setup()
-
--- File tree (custom — no neo-tree/nui dependency)
-require('claudespace.filetree').setup()
-
--- Statusline (custom — no lualine dependency)
-require('claudespace.statusline').setup()
-
--- Winbar: relative path breadcrumb
-require('claudespace.winbar').setup()
-
--- Directory dashboard (replaces netrw)
-require('claudespace.dirdash').setup()
-
--- Workspace manager
-require('claudespace.workspace').setup()
-
--- Home screen (replaces VimEnter logic from workspace)
-require('claudespace.home').setup()
-
--- Task runner
-require('claudespace.tasks').setup()
-
--- Outline panel
-require('claudespace.outline').setup()
-
--- Notifications center
-require('claudespace.notify').setup()
-
--- Quick marks
-require('claudespace.marks').setup()
-
--- Command palette
-require('claudespace.palette').setup()
-
--- Git staging UI
-require('claudespace.git_ui').setup()
-
--- Claude context injection
-require('claudespace.claude.context').setup()
-
--- Test runner UI
-require('claudespace.test_ui').setup()
-
--- Workspace templates
-require('claudespace.templates').setup()
-
--- Trouble (diagnostics panel)
-vim.pack.add { 'https://github.com/folke/trouble.nvim' }
-if pcall(require, 'trouble') then
-  require('trouble').setup()
-end
-map('n', '<leader>xx', '<cmd>Trouble diagnostics toggle<cr>', { desc = 'Diagnostics' })
-map('n', '<leader>xb', '<cmd>Trouble diagnostics toggle filter.buf=0<cr>', { desc = 'Buffer diagnostics' })
-map('n', '<leader>xs', '<cmd>Trouble symbols toggle<cr>', { desc = 'Symbols' })
-map('n', '<leader>xq', '<cmd>Trouble qflist toggle<cr>', { desc = 'Quickfix' })
 
 -- Which-key
 vim.pack.add { 'https://github.com/folke/which-key.nvim' }
@@ -76,15 +56,28 @@ if ok_wk then
   wk.setup()
   if wk.add then
     wk.add({
-      { '<leader>f', group = 'Find' },
-      { '<leader>t', group = 'Tabs/Terminal' },
-      { '<leader>c', group = 'Claude' },
-      { '<leader>g', group = 'Git' },
-      { '<leader>x', group = 'Diagnostics' },
-      { '<leader>w', group = 'Workspace' },
-      { '<leader>r', group = 'Run/Tasks' },
-      { '<leader>m', group = 'Marks' },
-      { '<leader>j', group = 'Jump' },
+      { '<leader>f',  group = 'Find/Files' },
+      { '<leader>t',  group = 'Tabs' },
+      { '<leader>c',  group = 'Claude' },
+      { '<leader>g',  group = 'Git' },
+      { '<leader>gt', group = 'Git: toggle' },
+      { '<leader>l',  group = 'LSP' },
+      { '<leader>x',  group = 'Diagnostics/Panels' },
+      { '<leader>s',  group = 'Search/Replace' },
+      { '<leader>w',  group = 'Workspace' },
+      { '<leader>ww', group = 'Terminals' },
+      { '<leader>d',  group = 'Debug' },
+      { '<leader>r',  group = 'Run/Test' },
+      { '<leader>m',  group = 'Marks' },
+      -- Claude sub-groups for discoverability
+      { '<leader>cf', desc = 'Claude: fix diagnostic' },
+      { '<leader>ck', desc = 'Claude: explain code' },
+      { '<leader>ci', desc = 'Claude: inject workspace context' },
+      { '<leader>cd', desc = 'Claude: send diagnostics' },
+      { '<leader>cT', desc = 'Claude: send terminal output' },
+      { '<leader>c!', desc = 'Claude: shell command' },
+      { '<leader>co', desc = 'Claude: generate docs' },
+      { '<leader>cE', desc = 'Claude: multi-file compose' },
     })
   end
 end

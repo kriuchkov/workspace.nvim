@@ -1,6 +1,3 @@
-vim.g.mapleader = ' '
-vim.g.maplocalleader = ' '
-
 local map = vim.keymap.set
 
 -- File / buffer navigation
@@ -18,6 +15,16 @@ map('n', '<C-l>', '<C-w>l', { desc = 'Window right' })
 map('n', '[d', vim.diagnostic.goto_prev, { desc = 'Prev diagnostic' })
 map('n', ']d', vim.diagnostic.goto_next, { desc = 'Next diagnostic' })
 map('n', '<leader>e', vim.diagnostic.open_float, { desc = 'Diagnostic float' })
+
+-- LSP reference highlights: прыжок между подсвеченными вхождениями символа
+map('n', ']r', function()
+  vim.lsp.buf.document_highlight()
+  vim.cmd "normal! ]\'"
+end, { desc = 'Next LSP reference' })
+map('n', '[r', function()
+  vim.lsp.buf.document_highlight()
+  vim.cmd "normal! [\'"
+end, { desc = 'Prev LSP reference' })
 
 -- Terminal: exit with double Esc
 map('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })

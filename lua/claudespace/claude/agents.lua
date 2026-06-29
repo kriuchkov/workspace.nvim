@@ -1,5 +1,5 @@
 -- Agent panel: shows available agents from AGENTS.md (project + global)
--- and currently running claude-multi sessions
+-- and currently running Claude sessions
 
 local function parse_agents_md(path)
   if vim.fn.filereadable(path) == 0 then return {} end
@@ -41,19 +41,16 @@ local function open_agents_panel()
     end
   end
 
-  -- Active sessions from claude-multi
-  local ok, state = pcall(require, 'claude-multi.state')
-  if ok then
-    local sessions = state.get_sessions()
-    if #sessions > 0 then
-      table.insert(lines, '# Active Sessions')
+  -- Active Claude sessions
+  local cs = require('claudespace.claude.sessions')
+  local active_sessions = cs.list()
+  if #active_sessions > 0 then
+    table.insert(lines, '# Active Sessions')
+    table.insert(lines, '')
+    for _, s in ipairs(active_sessions) do
+      table.insert(lines, '  ⚡ ' .. (s.name or 'Chat'))
+      entries[#lines] = { session_id = s.id }
       table.insert(lines, '')
-      for _, s in ipairs(sessions) do
-        table.insert(lines, '  ⚡ ' .. (s.name or 'Chat') .. ' [' .. (s.branch or '?') .. ']')
-        local idx = #lines
-        entries[idx] = { session_id = s.id }
-        table.insert(lines, '')
-      end
     end
   end
 
@@ -90,12 +87,11 @@ local function open_agents_panel()
     local entry = entries[row]
     if not entry then return end
     close()
+    local cs = require('claudespace.claude.sessions')
     if entry.session_id then
-      require('claude-multi').switch_session(entry.session_id, false)
+      cs.open(entry.session_id)
     else
-      -- Claude CLI has no --agent flag; open a session and notify user to
-      -- paste the agent name so Claude picks up AGENTS.md context automatically.
-      require('claude-multi').new_session_here()
+      cs.new()
       if entry.name then
         vim.defer_fn(function()
           vim.notify('claudespace: type  /agent ' .. entry.name .. '  in Claude to activate', vim.log.levels.INFO)

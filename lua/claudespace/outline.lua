@@ -147,7 +147,9 @@ local function create_buf()
   return buf
 end
 
-function M.open()
+-- anchor_win: when given, open to the RIGHT of it (activity-bar sidebar slot);
+-- otherwise the outline is the rightmost split.
+function M.open(anchor_win)
   if S.win and api.nvim_win_is_valid(S.win) then
     api.nvim_set_current_win(S.win)
     return
@@ -155,7 +157,14 @@ function M.open()
   S.source_win = api.nvim_get_current_win()
   S.buf        = create_buf()
 
-  vim.cmd 'botright vsplit'
+  if anchor_win and api.nvim_win_is_valid(anchor_win) then S.anchor = anchor_win end
+  if S.anchor and api.nvim_win_is_valid(S.anchor) then
+    api.nvim_set_current_win(S.anchor)
+    vim.cmd 'rightbelow vsplit'
+  else
+    S.anchor = nil
+    vim.cmd 'botright vsplit'
+  end
   S.win = api.nvim_get_current_win()
   api.nvim_win_set_buf(S.win, S.buf)
   api.nvim_win_set_width(S.win, 34)

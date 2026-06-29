@@ -83,17 +83,18 @@ function M.save(name, silent)
   local ok_lay, lay = pcall(require, 'claudespace.layout')
   if ok_lay then layout = lay.save() end
 
-  -- Save active Claude session
-  local claude_id
-  local ok_cm, cm = pcall(require, 'claude-multi.state')
-  if ok_cm then
-    local sess = cm.get_active_session()
-    claude_id = sess and sess.id or nil
+  -- Save Claude sessions for persistence across restarts
+  local claude_sessions, claude_id
+  local ok_cs, cs = pcall(require, 'claudespace.claude.sessions')
+  if ok_cs then
+    claude_id      = cs.active_id_()
+    claude_sessions = cs.get_persistence_data()
   end
 
   local state = {
     name = name, cwd = fn.getcwd(), files = files, active = active,
     layout = layout, claude_session_id = claude_id,
+    claude_sessions = claude_sessions,
   }
   local ok, json = pcall(fn.json_encode, state)
   if ok then
@@ -152,17 +153,26 @@ function M.load(name)
     if ok_lay then lay.restore(state.layout) end
   end
 
-  -- Restore Claude session
-  if state.claude_session_id then
-    pcall(function()
-      local cm = require 'claude-multi.state'
-      cm.set_active_session_id(state.claude_session_id)
+  -- Restore Claude sessions in background (deferred so layout is settled first)
+  if state.claude_sessions and #state.claude_sessions > 0 then
+    vim.schedule(function()
+      local ok_cs2, cs2 = pcall(require, 'claudespace.claude.sessions')
+      if ok_cs2 then cs2.restore(state.claude_sessions) end
     end)
   end
 
   M._current = name
   M._write_last(name)
-  vim.cmd 'redrawtabline'
+
+  -- Re-apply tabline groups after all files are open.
+  -- DirChanged already called load_session(), but buffers from badd/edit may
+  -- have been added after that scan — reapply_groups() catches stragglers.
+  vim.schedule(function()
+    pcall(function()
+      require('claudespace.tabline').reapply_groups()
+    end)
+  end)
+
   vim.notify('Workspace: ' .. name .. '  (' .. fn.fnamemodify(state.cwd, ':~') .. ')', vim.log.levels.INFO)
 end
 
@@ -280,9 +290,9 @@ function M.setup()
 
   -- Keymaps
   local map = vim.keymap.set
-  map('n', '<leader>ws', M.switch,    { desc = 'Workspace: switch' })
-  map('n', '<leader>ww', function() M.save() end, { desc = 'Workspace: save' })
-  map('n', '<leader>wl', M.show_list, { desc = 'Workspace: list' })
+  map('n', '<leader>ws', M.switch,                 { desc = 'Workspace: switch', silent = true })
+  map('n', '<leader>wS', function() M.save() end, { desc = 'Workspace: save',   silent = true })
+  map('n', '<leader>wl', M.show_list,             { desc = 'Workspace: list',   silent = true })
   map('n', '<leader>wh', function()
     require('claudespace.home').open()
   end, { desc = 'Workspace: home screen' })
@@ -292,9 +302,9 @@ function M.setup()
     end)
   end, { desc = 'Workspace: delete' })
 
-  -- Per-workspace terminals: <leader>w1 / w2 / w3
+  -- Per-workspace terminals: <leader>ww1 / ww2 / ww3
   for slot = 1, 3 do
-    map('n', '<leader>w' .. slot, function()
+    map('n', '<leader>ww' .. slot, function()
       local ws_name = M._current or M.current_name()
       if not M._terminals[ws_name] then M._terminals[ws_name] = {} end
       local buf = M._terminals[ws_name][slot]

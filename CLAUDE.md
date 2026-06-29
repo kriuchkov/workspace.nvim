@@ -26,7 +26,7 @@ Lock file: `nvim-pack-lock.json`. Update: `:lua vim.pack.update()`.
 Each module in `lua/claudespace/claude/` is self-contained:
 - registers its own keymaps
 - calls `claude --print` CLI for one-shot generations
-- uses `claude-multi.nvim` for interactive sessions
+- runs interactive sessions via `claudespace.claude.sessions` (terminal buffers running the `claude` CLI)
 
 ## Testing Changes
 Run with: `NVIM_APPNAME=claudespace nvim` (uses ~/.config/claudespace as config dir,

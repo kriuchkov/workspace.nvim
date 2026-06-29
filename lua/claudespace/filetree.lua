@@ -423,7 +423,9 @@ local function create_buf()
   return buf
 end
 
-function M.open(root)
+-- anchor_win: when given, open to the RIGHT of it (used by the activity bar);
+-- otherwise the tree is the leftmost split.
+function M.open(root, anchor_win)
   if S.win and api.nvim_win_is_valid(S.win) then
     api.nvim_set_current_win(S.win)
     return
@@ -431,7 +433,15 @@ function M.open(root)
   S.root = root or fn.getcwd()
   S.buf  = create_buf()
 
-  vim.cmd 'topleft vsplit'
+  -- Remember the anchor so reopens (toggle / reveal / sticky) stay to its right.
+  if anchor_win and api.nvim_win_is_valid(anchor_win) then S.anchor = anchor_win end
+  if S.anchor and api.nvim_win_is_valid(S.anchor) then
+    api.nvim_set_current_win(S.anchor)
+    vim.cmd 'rightbelow vsplit'
+  else
+    S.anchor = nil
+    vim.cmd 'topleft vsplit'
+  end
   S.win = api.nvim_get_current_win()
   api.nvim_win_set_buf(S.win, S.buf)
   api.nvim_win_set_width(S.win, 30)
@@ -556,6 +566,19 @@ function M.setup()
       if S.win and api.nvim_win_is_valid(S.win) then refresh_git(); render() end
     end,
   })
+
+  -- Re-scan on external changes (files added/removed outside nvim, e.g. git/CLI).
+  -- render() always reads the disk fresh, so this just re-triggers it.
+  local function refresh_if_open()
+    if S.win and api.nvim_win_is_valid(S.win) then refresh_git(); render() end
+  end
+  api.nvim_create_autocmd('FocusGained', { callback = refresh_if_open })
+  api.nvim_create_autocmd('WinEnter', {
+    callback = function()
+      if S.win and api.nvim_get_current_win() == S.win then refresh_if_open() end
+    end,
+  })
+
   vim.keymap.set('n', '\\', M.reveal, { silent = true, desc = 'File tree' })
 end
 

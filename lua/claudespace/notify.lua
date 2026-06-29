@@ -93,7 +93,10 @@ function M.setup()
       time  = os.date('%H:%M:%S'),
     })
     if #history > MAX then history[MAX + 1] = nil end
-    orig(msg, level, opts)
+    -- INFO goes to history only; WARN/ERROR still show in cmdline
+    if level >= vim.log.levels.WARN then
+      orig(msg, level, opts)
+    end
   end
 
   vim.keymap.set('n', '<leader>N', M.open, { desc = 'Notifications: history' })

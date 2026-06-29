@@ -1,3 +1,6 @@
+vim.g.mapleader      = ' '
+vim.g.maplocalleader = ' '
+
 local o = vim.opt
 
 -- Russian ЙЦУКЕН → Latin QWERTY keyboard-position mapping.
@@ -48,8 +51,9 @@ o.fillchars:append { vert = '│', vertleft = '│', vertright = '│', eob = ' 
 o.scrolloff = 10
 o.sidescrolloff = 8
 o.wrap = false
-o.updatetime = 250
-o.timeoutlen = 300
+o.updatetime  = 600   -- CursorHold delay (LSP doc-highlight + reference lens) — higher = fewer triggers
+o.timeoutlen  = 150   -- fast leader key in normal mode
+o.ttimeoutlen = 10    -- instant terminal escape codes (arrow keys, etc.)
 o.undofile = true
 o.swapfile = false  -- no swap files; undofile already handles crash recovery
 o.mouse = 'a'
@@ -59,14 +63,41 @@ o.clipboard = 'unnamedplus'
 o.completeopt = 'menuone,noselect'
 o.pumheight = 10
 
--- Terminal: prevent scrolloff drift and resize artifacts in TUI apps
+-- Folding: native Neovim 0.12 treesitter-based
+o.foldmethod    = 'expr'
+o.foldexpr      = 'v:lua.vim.treesitter.foldexpr()'
+o.foldcolumn    = '1'
+o.foldlevel     = 99    -- open all folds by default
+o.foldlevelstart = 99
+o.foldenable    = true
+
+-- Auto-save on focus loss or buffer leave (only real named files)
+vim.api.nvim_create_autocmd({ 'FocusLost', 'BufLeave' }, {
+  callback = function()
+    local buf = vim.api.nvim_get_current_buf()
+    if vim.bo[buf].modified
+      and vim.bo[buf].buftype == ''
+      and vim.fn.bufname(buf) ~= '' then
+      vim.cmd 'silent! write'
+    end
+  end,
+})
+
+-- Terminal: prevent scrolloff drift and resize artifacts in TUI apps.
+-- Also raise timeoutlen while in terminal mode so <Esc><Esc> is comfortable
+-- to press (timeoutlen=150 is fine for normal mode but too fast for double-Esc).
 vim.api.nvim_create_autocmd({ 'TermOpen', 'TermEnter' }, {
   callback = function()
     vim.wo.scrolloff = 0
     vim.wo.number = false
     vim.wo.relativenumber = false
     vim.wo.signcolumn = 'no'
+    vim.opt.timeoutlen = 300
   end,
+})
+
+vim.api.nvim_create_autocmd('TermLeave', {
+  callback = function() vim.opt.timeoutlen = 150 end,
 })
 
 -- Restore number/signcolumn when switching back to a normal buffer

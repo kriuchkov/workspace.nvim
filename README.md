@@ -165,7 +165,6 @@ bash scripts/check.sh        # syntax + module load + unit tests
 
 ```
 lua/
-├── claude-multi/            # bundled multi-session Claude manager
 └── claudespace/
     ├── options.lua          # vim.opt settings
     ├── keymaps.lua          # base keymaps
@@ -174,7 +173,7 @@ lua/
     │   ├── ui.lua           # all UI wiring
     │   ├── core.lua         # telescope, treesitter, lsp, cmp
     │   ├── git.lua          # gitsigns
-    │   └── claude.lua       # claude-multi setup
+    │   └── claude.lua       # Claude session integration
     ├── claude/
     │   ├── commit.lua       # <leader>gc
     │   ├── inline.lua       # <leader>ce

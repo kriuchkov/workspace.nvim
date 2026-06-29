@@ -53,14 +53,23 @@ function M.render()
   if bt == '' then
     local ok, diag = pcall(vim.diagnostic.get, 0)
     if ok then
-      local e, w = 0, 0
+      local counts = { 0, 0, 0, 0 }  -- error, warn, info, hint
       for _, d in ipairs(diag) do
-        if d.severity == 1 then e = e + 1
-        elseif d.severity == 2 then w = w + 1
-        end
+        counts[d.severity] = (counts[d.severity] or 0) + 1
       end
-      if e > 0 then hl(t, 'CSErr',  ' ' .. e .. ' ') end
-      if w > 0 then hl(t, 'CSWarn', ' ' .. w .. ' ') end
+      if counts[1] > 0 then hl(t, 'CSErr',  ' ' .. counts[1]) end
+      if counts[2] > 0 then hl(t, 'CSWarn', '  ' .. counts[2]) end
+      if counts[1] > 0 or counts[2] > 0 then hl(t, 'StatusLine', '  ') end
+    end
+  end
+
+  -- DAP status (shown when debugging)
+  local ok_dap, dap = pcall(require, 'dap')
+  if ok_dap then
+    local session = dap.session()
+    if session then
+      local status = require('dap').status()
+      hl(t, 'CSDebug', '  ' .. (status ~= '' and status or 'Debugging') .. '  ')
     end
   end
 
@@ -71,6 +80,19 @@ function M.render()
   local ok_ws, ws = pcall(require, 'claudespace.workspace')
   if ok_ws and ws._current then
     hl(t, 'CSWorkspace', '⬡ ' .. ws._current .. '  ')
+  end
+
+  -- neotest status (running/failed count)
+  local ok_nt, nt = pcall(require, 'neotest')
+  if ok_nt then
+    local ok_state, state = pcall(function() return nt.state() end)
+    if ok_state and state then
+      local running = 0
+      for _, s in pairs(state) do
+        if s == 'running' then running = running + 1 end
+      end
+      if running > 0 then hl(t, 'CSInfo', '◌ ' .. running .. '  ') end
+    end
   end
 
   -- Claude sessions + connection
@@ -135,6 +157,7 @@ local function setup_highlights()
   hi(0, 'CSClaude', { fg = '#7aa2f7' })
   hi(0, 'CSLsp',    { fg = '#73daca' })
   hi(0, 'CSInfo',   { fg = '#565f89' })
+  hi(0, 'CSDebug',  { fg = '#ff9e64', bold = true })
 end
 
 function M.setup()

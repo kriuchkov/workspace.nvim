@@ -1,26 +1,97 @@
 local map = vim.keymap.set
 
--- Diff viewer
-vim.pack.add { 'https://github.com/sindrets/diffview.nvim' }
-if pcall(require, 'diffview') then
-  require('diffview').setup()
-end
-map('n', '<leader>gd', '<cmd>DiffviewOpen<cr>', { desc = 'Git diff' })
-map('n', '<leader>gh', '<cmd>DiffviewFileHistory %<cr>', { desc = 'File history' })
-map('n', '<leader>gD', '<cmd>DiffviewClose<cr>', { desc = 'Close diff' })
+-- ── gitsigns ──────────────────────────────────────────────────────────────────
+-- Inline hunks, blame, stage/reset without leaving the buffer.
 
--- Lazygit
-vim.pack.add { 'https://github.com/kdheepak/lazygit.nvim' }
-map('n', '<leader>lg', '<cmd>LazyGit<cr>', { desc = 'LazyGit' })
-
--- Git signs
 vim.pack.add { 'https://github.com/lewis6991/gitsigns.nvim' }
 if pcall(require, 'gitsigns') then
   require('gitsigns').setup {
     signs = {
-      add = { text = '+' },
-      change = { text = '~' },
-      delete = { text = '_' },
+      add          = { text = '▎' },
+      change       = { text = '▎' },
+      delete       = { text = '▁' },
+      topdelete    = { text = '▔' },
+      changedelete = { text = '▎' },
+      untracked    = { text = '▎' },
+    },
+    current_line_blame = true,
+    current_line_blame_opts = {
+      delay = 600,
+      virt_text_pos = 'eol',
+    },
+    current_line_blame_formatter = ' <author>, <author_time:%d %b %Y> · <summary>',
+    on_attach = function(bufnr)
+      local gs = require 'gitsigns'
+      local o  = { buffer = bufnr, silent = true }
+
+      -- Hunk navigation
+      map('n', ']h', function()
+        if vim.wo.diff then vim.cmd.normal { ']c', bang = true }
+        else gs.nav_hunk 'next' end
+      end, vim.tbl_extend('force', o, { desc = 'Next hunk' }))
+      map('n', '[h', function()
+        if vim.wo.diff then vim.cmd.normal { '[c', bang = true }
+        else gs.nav_hunk 'prev' end
+      end, vim.tbl_extend('force', o, { desc = 'Prev hunk' }))
+
+      -- Stage / reset
+      map({ 'n', 'v' }, '<leader>gs', gs.stage_hunk,   vim.tbl_extend('force', o, { desc = 'Stage hunk' }))
+      map({ 'n', 'v' }, '<leader>gr', gs.reset_hunk,   vim.tbl_extend('force', o, { desc = 'Reset hunk' }))
+      map('n', '<leader>gS', gs.stage_buffer,           vim.tbl_extend('force', o, { desc = 'Stage buffer' }))
+      map('n', '<leader>gR', gs.reset_buffer,           vim.tbl_extend('force', o, { desc = 'Reset buffer' }))
+      map('n', '<leader>gu', gs.undo_stage_hunk,        vim.tbl_extend('force', o, { desc = 'Undo stage' }))
+
+      -- Preview / blame
+      map('n', '<leader>gp', gs.preview_hunk,           vim.tbl_extend('force', o, { desc = 'Preview hunk' }))
+      map('n', '<leader>gb', function() gs.blame_line { full = true } end,
+        vim.tbl_extend('force', o, { desc = 'Blame line' }))
+      map('n', '<leader>gB', gs.blame,                  vim.tbl_extend('force', o, { desc = 'Blame file' }))
+
+      -- Diff
+      map('n', '<leader>gi', gs.diffthis,               vim.tbl_extend('force', o, { desc = 'Diff index' }))
+      map('n', '<leader>gI', function() gs.diffthis '~' end,
+        vim.tbl_extend('force', o, { desc = 'Diff HEAD~' }))
+
+      -- Toggle
+      map('n', '<leader>gtb', gs.toggle_current_line_blame,
+        vim.tbl_extend('force', o, { desc = 'Toggle blame' }))
+      map('n', '<leader>gtd', gs.toggle_deleted,
+        vim.tbl_extend('force', o, { desc = 'Toggle deleted' }))
+
+      -- Text object: ih = inner hunk
+      map({ 'o', 'x' }, 'ih', gs.select_hunk, o)
+    end,
+  }
+end
+
+-- ── diffview ──────────────────────────────────────────────────────────────────
+-- Full-screen diff/log viewer.
+
+vim.pack.add { 'https://github.com/sindrets/diffview.nvim' }
+if pcall(require, 'diffview') then
+  require('diffview').setup {
+    enhanced_diff_hl = true,
+    view = {
+      default = { layout = 'diff2_horizontal' },
+    },
+    hooks = {
+      -- Close diffview when it's the only tab
+      diff_buf_read = function() vim.wo.wrap = false end,
     },
   }
 end
+
+-- Current file diff vs index
+map('n', '<leader>gd', '<cmd>DiffviewOpen<cr>',           { desc = 'Git: diff index', silent = true })
+-- Current file history
+map('n', '<leader>gh', '<cmd>DiffviewFileHistory %<cr>',  { desc = 'Git: file history', silent = true })
+-- Repo-wide commit log
+map('n', '<leader>gl', '<cmd>DiffviewFileHistory<cr>',    { desc = 'Git: repo log', silent = true })
+-- Close diffview
+map('n', '<leader>gD', '<cmd>DiffviewClose<cr>',          { desc = 'Git: close diff', silent = true })
+
+-- ── lazygit ───────────────────────────────────────────────────────────────────
+-- Floating terminal wrapper around the lazygit CLI.
+
+require('claudespace.lazygit').setup()
+map('n', '<leader>gg', '<cmd>LazyGit<cr>', { desc = 'Git: lazygit', silent = true })

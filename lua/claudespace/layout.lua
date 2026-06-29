@@ -87,7 +87,7 @@ function M.restore(layout)
       break
     end
   end
-  vim.cmd 'only'
+  vim.cmd 'silent! only'
   restore_node(layout)
 end
 

@@ -32,23 +32,19 @@ local function render()
   blank()
 
   -- Active Claude sessions
-  local ok, state = pcall(require, 'claude-multi.state')
-  local sessions = ok and state.get_sessions() or {}
-  if #sessions > 0 then
+  local cs = require('claudespace.claude.sessions')
+  local sess_list = cs.list()
+  if #sess_list > 0 then
     table.insert(lines, center('─── Active Sessions ───', width))
     hl(#lines, '─── Active Sessions ───', 'Special')
     blank()
-    for _, s in ipairs(sessions) do
+    for _, s in ipairs(sess_list) do
       local label = '  ⚡ ' .. (s.name or 'Chat')
-      if s.branch then label = label .. '  [' .. s.branch .. ']' end
       table.insert(lines, center(label, width))
       local ln = #lines
       hl(ln, label:gsub('^%s+', ''), 'Identifier')
       local captured = s
-      actions[ln] = function()
-        state.set_active_session_id(captured.id)
-        require('claude-multi.terminal').open_in_current_window(captured)
-      end
+      actions[ln] = function() cs.open(captured.id) end
     end
     blank()
     blank()
@@ -60,7 +56,7 @@ local function render()
   blank()
 
   local quick = {
-    { key = '<leader>cn', label = 'New Claude session',     fn = function() require('claude-multi').new_session_here() end },
+    { key = '<leader>cn', label = 'New Claude session',     fn = function() cs.new() end },
     { key = '<leader>ff', label = 'Find file',              fn = function() vim.cmd 'Telescope find_files' end },
     { key = '<leader>fg', label = 'Live grep',              fn = function() vim.cmd 'Telescope live_grep' end },
     { key = '<leader>fr', label = 'Recent files',           fn = function() vim.cmd 'Telescope oldfiles' end },

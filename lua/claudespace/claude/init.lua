@@ -1,8 +1,7 @@
-require 'claudespace.claude.commit'
-require 'claudespace.claude.inline'
-require 'claudespace.claude.tests'
-require 'claudespace.claude.review'
-require 'claudespace.claude.pr'
+require 'claudespace.claude.git_ops'
+require 'claudespace.claude.codegen'
+require 'claudespace.claude.fix'
+require 'claudespace.claude.assist'
 require 'claudespace.claude.agents'
 require 'claudespace.claude.sessions'
 

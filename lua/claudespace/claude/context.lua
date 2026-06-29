@@ -88,52 +88,107 @@ function M.update()
   pcall(fn.writefile, vim.split(content, '\n', { plain = true }), outfile)
 end
 
+---Inject workspace context into a specific terminal job (called on session start).
+---@param job_id number
+---@param cwd?   string
+function M.inject_to_job(job_id, cwd)
+  if not job_id or job_id <= 0 then return end
+  local dir     = (cwd or fn.getcwd()) .. '/.claude'
+  local outfile = dir .. '/WORKSPACE.md'
+  fn.mkdir(dir, 'p')
+  pcall(fn.writefile, vim.split(generate(), '\n', { plain = true }), outfile)
+  pcall(fn.chansend, job_id, '@' .. outfile .. '\n')
+end
+
+---Send arbitrary text to the active Claude session's terminal job.
+---@param text string
+---@return boolean
+function M.send_to_active(text)
+  local sess = require('claudespace.claude.sessions').active()
+  if not sess then
+    vim.notify('claudespace: no active Claude session', vim.log.levels.WARN)
+    return false
+  end
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.b[b].cs_session_id == sess.id and vim.bo[b].buftype == 'terminal' then
+      local job = vim.b[b].terminal_job_id
+      if job then pcall(fn.chansend, job, text); return true end
+    end
+  end
+  vim.notify('claudespace: Claude session buffer not found', vim.log.levels.WARN)
+  return false
+end
+
 ---Inject context into the active Claude terminal session.
----Sends the context file path as a Claude @ reference.
 function M.inject()
   M.update()
   local outfile = fn.getcwd() .. '/.claude/WORKSPACE.md'
+  local sent = M.send_to_active('@' .. outfile .. '\n')
+  vim.notify(
+    sent and 'Context injected into Claude session'
+          or 'Context written to .claude/WORKSPACE.md',
+    vim.log.levels.INFO
+  )
+end
 
-  -- Try to send to active Claude terminal
-  local sent = false
-  for _, buf in ipairs(vim.api.nvim_list_bufs()) do
-    if vim.bo[buf].buftype == 'terminal' then
-      local name = vim.api.nvim_buf_get_name(buf)
-      if name:match('claude') then
-        local job = vim.b[buf].terminal_job_id
-        if job then
-          pcall(vim.fn.chansend, job, '@' .. outfile .. '\n')
-          sent = true
-          -- Make sure the terminal is visible
-          for _, win in ipairs(vim.api.nvim_list_wins()) do
-            if vim.api.nvim_win_get_buf(win) == buf then
-              vim.api.nvim_set_current_win(win)
-              break
-            end
-          end
-          break
-        end
-      end
+---Send the last ~60 lines from the most recent non-Claude terminal to Claude.
+function M.send_terminal_output()
+  local term_buf = nil
+  for _, b in ipairs(vim.api.nvim_list_bufs()) do
+    if vim.api.nvim_buf_is_loaded(b)
+      and vim.bo[b].buftype == 'terminal'
+      and not vim.b[b].cs_session_id then
+      term_buf = b
     end
   end
+  if not term_buf then
+    vim.notify('claudespace: no terminal output found', vim.log.levels.WARN); return
+  end
+  local total = vim.api.nvim_buf_line_count(term_buf)
+  local raw   = vim.api.nvim_buf_get_lines(term_buf, math.max(0, total - 60), total, false)
+  local clean = {}
+  for _, l in ipairs(raw) do
+    clean[#clean + 1] = l:gsub('\27%[[%d;]*[A-Za-z]', ''):gsub('\27%[[%d;]*m', '')
+  end
+  local output = vim.trim(table.concat(clean, '\n'))
+  if output == '' then
+    vim.notify('claudespace: terminal output is empty', vim.log.levels.WARN); return
+  end
+  if M.send_to_active('Here is the terminal output:\n```\n' .. output .. '\n```\n') then
+    vim.notify('Terminal output sent to Claude', vim.log.levels.INFO)
+  end
+end
 
-  if sent then
-    vim.notify('Context injected into Claude session', vim.log.levels.INFO)
-  else
-    vim.notify('Context written to .claude/WORKSPACE.md', vim.log.levels.INFO)
+---Send current file's LSP diagnostics to the active Claude session.
+function M.send_diagnostics()
+  local bufnr = vim.api.nvim_get_current_buf()
+  local fname = fn.fnamemodify(vim.api.nvim_buf_get_name(bufnr), ':~:.')
+  local diags = vim.diagnostic.get(bufnr)
+  if #diags == 0 then
+    vim.notify('claudespace: no diagnostics in current buffer', vim.log.levels.WARN); return
+  end
+  local sevmap = { 'ERROR', 'WARN', 'INFO', 'HINT' }
+  local lines  = { 'Diagnostics for `' .. fname .. '`:' }
+  for _, d in ipairs(diags) do
+    lines[#lines + 1] = ('  [%s] line %d: %s%s'):format(
+      sevmap[d.severity] or '?', d.lnum + 1, d.message,
+      d.source and (' (%s)'):format(d.source) or '')
+  end
+  if M.send_to_active(table.concat(lines, '\n') .. '\n') then
+    vim.notify(#diags .. ' diagnostic(s) sent to Claude', vim.log.levels.INFO)
   end
 end
 
 function M.setup()
-  vim.keymap.set('n', '<leader>ci', M.inject, { desc = 'Claude: inject workspace context' })
+  local map = vim.keymap.set
+  map('n', '<leader>ci', M.inject,               { desc = 'Claude: inject workspace context', silent = true })
+  map('n', '<leader>cT', M.send_terminal_output, { desc = 'Claude: send terminal output',     silent = true })
+  map('n', '<leader>cd', M.send_diagnostics,     { desc = 'Claude: send diagnostics',         silent = true })
 
-  -- Auto-update context on workspace save
   vim.api.nvim_create_autocmd('User', {
-    pattern = 'ClaudespaceWorkspaceSaved',
+    pattern  = 'ClaudespaceWorkspaceSaved',
     callback = M.update,
   })
-
-  -- Update on DirChanged (workspace switch changes cwd)
   vim.api.nvim_create_autocmd('DirChanged', {
     callback = function() vim.schedule(M.update) end,
   })

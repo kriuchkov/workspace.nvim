@@ -30,10 +30,14 @@ local function close_all_bufs()
   end
 end
 
+-- Outer describe so before_each/after_each have a valid describe context.
+describe('workspace', function()
+
 before_each(function()
   orig_cwd = vim.fn.getcwd()
-  wdir     = vim.fn.tempname()
-  projdir  = vim.fn.tempname()
+  -- resolve() to avoid /var vs /private/var symlink mismatch on macOS
+  wdir     = vim.fn.resolve(vim.fn.tempname())
+  projdir  = vim.fn.resolve(vim.fn.tempname())
   vim.fn.mkdir(wdir,    'p')
   vim.fn.mkdir(projdir, 'p')
   ws._set_wdir(wdir)
@@ -171,7 +175,7 @@ end)
 
 describe('workspace load()', function()
   it('restores cwd to the saved directory', function()
-    local other = vim.fn.tempname()
+    local other = vim.fn.resolve(vim.fn.tempname())
     vim.fn.mkdir(other, 'p')
     vim.cmd('cd ' .. vim.fn.fnameescape(other))
     ws.save('other')
@@ -344,4 +348,6 @@ describe('workspace delete()', function()
     vim.fn.confirm = orig
     assert.equals(1, vim.fn.filereadable(wdir .. '/ws_keep.json'))
   end)
-end)
+end) -- describe workspace delete()
+
+end) -- describe workspace (outer)
