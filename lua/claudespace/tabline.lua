@@ -581,6 +581,7 @@ function M.render()
   local prev_gid = nil   -- track group boundaries
   local pos   = 0        -- position index for CSTabSwitch
   local group_pos = 0    -- group index for <leader>N quick-jump numbering
+  local buf_pos   = 0    -- buffer index WITHIN the current group (Alt+G then B)
 
   -- Count buffers per group for collapsed label
   local group_counts = {}
@@ -615,6 +616,7 @@ function M.render()
 
     -- Group label when a new group starts
     if gid ~= prev_gid then
+      buf_pos = 0   -- restart buffer numbering for the new group
       if grp then
         group_pos = group_pos + 1
         local num = (group_pos <= #SUPER) and (SUPER[group_pos] .. ' ') or ''
@@ -668,7 +670,13 @@ function M.render()
       u[#u+1] = (sel and '%#CSTabPinSel#' or '%#CSTabPin#') .. PIN_GLYPH .. tab_hl
     end
 
-    u[#u+1] = '  '
+    -- Buffer number within its group (Alt+<group><this>)
+    buf_pos = buf_pos + 1
+    if buf_pos <= #SUPER then
+      u[#u+1] = (sel and '%#CSTabNumSel#' or '%#CSTabNum#') .. ' ' .. SUPER[buf_pos] .. ' ' .. tab_hl
+    else
+      u[#u+1] = '  '
+    end
 
     -- Icon (or terminal bolt)
     if buf.terminal then
@@ -952,6 +960,34 @@ function M.goto_group(n)
   set_buf_safe(best)
 end
 
+-- Open the b-th buffer within the g-th group.
+function M.goto_group_buf(g, b)
+  local gid = ordered_groups()[g]
+  if not gid then return end
+  if groups[gid].collapsed then groups[gid].collapsed = false; invalidate() end
+  local idx = 0
+  for _, buf in ipairs(sorted_bufs(listed_bufs())) do
+    if buf.gid == gid then
+      idx = idx + 1
+      if idx == b then set_buf_safe(buf.bufnr); return end
+    end
+  end
+end
+
+-- Alt+<group> chord: read the next digit as the buffer within that group.
+-- A non-digit just focuses the group's MRU buffer (and is replayed).
+function M.goto_group_chord(g)
+  if not ordered_groups()[g] then return end
+  local ok, ch = pcall(vim.fn.getcharstr)
+  local d = ok and tonumber(ch)
+  if d and d >= 1 and d <= 9 then
+    M.goto_group_buf(g, d)
+  else
+    M.goto_group(g)
+    if ok and ch and ch ~= '' then vim.api.nvim_feedkeys(ch, 'n', false) end
+  end
+end
+
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
@@ -1032,12 +1068,14 @@ function M.setup()
     if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf)
     else M.close_normal(buf) end
   end, { silent = true, desc = 'Close tab' })
-  -- <leader>N jumps to the n-th group (the numbered tabs); <A-N> jumps to the
-  -- n-th individual buffer within the current view (power users / no groups).
+  -- <leader>N → jump to group N. <A-N> → group N, then the next digit picks the
+  -- buffer within it (Alt+1 then 2 = group 1, buffer 2); a non-digit just lands
+  -- on the group.
   for i = 1, 9 do
     map('n', '<leader>' .. i, function() M.goto_group(i) end,
       { silent = true, desc = 'Tab: go to group ' .. i })
-    map('n', '<A-' .. i .. '>', function() M.goto_n(i) end, { silent = true })
+    map('n', '<A-' .. i .. '>', function() M.goto_group_chord(i) end,
+      { silent = true, desc = 'Tab: group ' .. i .. ' + buffer digit' })
   end
 
   -- Group keymaps
