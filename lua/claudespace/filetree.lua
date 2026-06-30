@@ -29,25 +29,70 @@ local S = {
 
 -- ── Git ───────────────────────────────────────────────────────────────────────
 
-local function refresh_git()
-  S.git_map     = {}
-  S.ignored_set = {}
-  S.git_root    = fn.trim(fn.system(
+-- Collect the git roots whose file-level status we need. Single-repo: the tree's
+-- own git root. Multi-repo: only repos the user has expanded (their files are
+-- visible) — avoids running `git status` across every repo on each refresh.
+local function git_roots()
+  local ok, repos = pcall(require, 'claudespace.repos')
+  if ok and repos.is_multi() then
+    local roots = {}
+    for _, m in ipairs(repos.list()) do
+      if S.expanded[m.abspath] then roots[#roots + 1] = m.abspath end
+    end
+    return roots
+  end
+  local gr = fn.trim(fn.system(
     'git -C ' .. fn.shellescape(S.root) .. ' rev-parse --show-toplevel 2>/dev/null'))
-  if vim.v.shell_error ~= 0 or S.git_root == '' then S.git_root = nil; return end
+  if vim.v.shell_error ~= 0 or gr == '' then return {} end
+  return { gr }
+end
 
-  -- --ignored shows !! entries so we can grey out gitignored paths
-  local out = fn.system(
-    'git -C ' .. fn.shellescape(S.root) .. ' status --porcelain --ignored 2>/dev/null')
-  for line in out:gmatch('[^\n]+') do
-    local xy  = line:sub(1, 2)
-    local rel = line:sub(4):gsub('^"', ''):gsub('"$', '')
-    rel = rel:match('^.+ %-> (.+)$') or rel
-    rel = rel:gsub('/$', '')  -- ignored dirs arrive with trailing slash
-    local abs = S.git_root .. '/' .. rel
-    local ch  = (xy:sub(1,1) ~= ' ' and xy:sub(1,1)) or xy:sub(2,2)
-    S.git_map[abs] = ch
-    if ch == '!' then S.ignored_set[abs] = true end
+-- In a multi-repo workspace the tree is rooted at the workspace root so every
+-- member repo is visible; otherwise it falls back to cwd.
+local function default_root()
+  local ok, repos = pcall(require, 'claudespace.repos')
+  if ok and repos.is_multi() then return repos.root() end
+  return fn.getcwd()
+end
+
+-- Repo annotation (branch ●dirty) for a directory node that is a member repo
+-- root. Uses the repos module's async-cached status — no git call here.
+local function repo_annotation(path)
+  local ok, repos = pcall(require, 'claudespace.repos')
+  if not (ok and repos.is_multi()) then return nil end
+  local m
+  for _, mem in ipairs(repos.list()) do
+    if mem.abspath == path then m = mem; break end
+  end
+  if not m then return nil end
+  local st = repos.status(m)
+  if not st then repos.refresh_status(m); return '  …' end
+  local s = st.branch ~= '' and ('  ' .. st.branch) or ''
+  if st.dirty  > 0 then s = s .. ' ●' .. st.dirty  end
+  if st.ahead  > 0 then s = s .. ' ↑' .. st.ahead  end
+  if st.behind > 0 then s = s .. ' ↓' .. st.behind end
+  return s
+end
+
+local function refresh_git()
+  S.git_map, S.ignored_set, S.has_git = {}, {}, false
+  for _, gr in ipairs(git_roots()) do
+    -- --ignored shows !! entries so we can grey out gitignored paths
+    local out = fn.system(
+      'git -C ' .. fn.shellescape(gr) .. ' status --porcelain --ignored 2>/dev/null')
+    if vim.v.shell_error == 0 then
+      S.has_git = true
+      for line in out:gmatch('[^\n]+') do
+        local xy  = line:sub(1, 2)
+        local rel = line:sub(4):gsub('^"', ''):gsub('"$', '')
+        rel = rel:match('^.+ %-> (.+)$') or rel
+        rel = rel:gsub('/$', '')  -- ignored dirs arrive with trailing slash
+        local abs = gr .. '/' .. rel
+        local ch  = (xy:sub(1,1) ~= ' ' and xy:sub(1,1)) or xy:sub(2,2)
+        S.git_map[abs] = ch
+        if ch == '!' then S.ignored_set[abs] = true end
+      end
+    end
   end
 end
 
@@ -62,7 +107,7 @@ local function is_ignored(path, ignored_set)
 end
 
 local function git_hl(path)
-  if not S.git_root then return nil end
+  if not S.has_git then return nil end
   if S.git_map[path] then return GIT_HL[S.git_map[path]] end
   if is_ignored(path, S.ignored_set) then return 'CSTreeGitIgn' end
   return nil
@@ -180,16 +225,19 @@ local function render()
                    or (e.is_last     and '└ ' or '├ ')
 
     local icon, icon_hl = get_file_icon(e.name, e.is_dir, S.expanded[e.path])
-    local line = indent .. connector .. icon .. e.name
+    local annot = e.is_dir and repo_annotation(e.path) or nil
+    local line = indent .. connector .. icon .. e.name .. (annot or '')
     lines[#lines + 1] = line
 
     local ln       = #lines - 1
     local icon_col = #indent + #connector
     local name_col = icon_col + #icon
+    local name_end = name_col + #e.name
     hi(ln, 0, icon_col, 'CSTreeGuide')   -- dim the entire structural prefix
     hi(ln, icon_col, name_col, icon_hl)
-    hi(ln, name_col, name_col + #e.name,
+    hi(ln, name_col, name_end,
        git_hl(e.path) or (e.is_dir and 'CSTreeDir' or 'CSTreeFile'))
+    if annot then hi(ln, name_end, name_end + #annot, 'Comment') end
   end
 
   api.nvim_set_option_value('modifiable', true,  { buf = S.buf })
@@ -430,7 +478,7 @@ function M.open(root, anchor_win)
     api.nvim_set_current_win(S.win)
     return
   end
-  S.root = root or fn.getcwd()
+  S.root = root or default_root()
   S.buf  = create_buf()
 
   -- Remember the anchor so reopens (toggle / reveal / sticky) stay to its right.
@@ -511,6 +559,32 @@ function M.reveal()
   for i, e in ipairs(S.entries) do
     if e.path == file then
       api.nvim_win_set_cursor(S.win, { i + HEADER_LINES, 0 })
+      break
+    end
+  end
+end
+
+-- Reveal and focus an arbitrary path (used by the repos overview to jump into a
+-- repo). Expands the target dir and all ancestors up to the tree root.
+function M.focus_path(target)
+  if not target or target == '' then return end
+  if not (S.win and api.nvim_win_is_valid(S.win)) then M.open() end
+  if target:sub(1, #S.root) ~= S.root then return end
+
+  local path = target
+  while #path >= #S.root do
+    if fn.isdirectory(path) == 1 then S.expanded[path] = true end
+    local up = fn.fnamemodify(path, ':h')
+    if up == path or #up < #S.root then break end
+    path = up
+  end
+
+  refresh_git()
+  render()
+  api.nvim_set_current_win(S.win)
+  for i, e in ipairs(S.entries) do
+    if e.path == target then
+      pcall(api.nvim_win_set_cursor, S.win, { i + HEADER_LINES, 0 })
       break
     end
   end

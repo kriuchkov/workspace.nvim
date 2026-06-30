@@ -118,6 +118,7 @@ function M.open()
     vim.api.nvim_buf_add_highlight(buf, ns, h[4], h[1], h[2], h[3])
   end
 
+  require('claudespace.claude.util').ensure_editor_win()
   vim.api.nvim_win_set_buf(0, buf)
   vim.wo.number = false
   vim.wo.relativenumber = false

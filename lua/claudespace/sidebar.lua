@@ -84,10 +84,19 @@ end
 
 local function render_bar()
   if not (S.ab_buf and api.nvim_buf_is_valid(S.ab_buf)) then return end
+  -- When the bar is focused, mark the cursor row with the same strip so you can
+  -- see where you are while navigating (cursorline stays off to avoid the
+  -- full-width fill).
+  local cur_line
+  if S.ab_win and api.nvim_win_is_valid(S.ab_win)
+     and api.nvim_get_current_win() == S.ab_win then
+    cur_line = api.nvim_win_get_cursor(S.ab_win)[1]
+  end
   local lines, badges = {}, {}
   for i, v in ipairs(VIEWS) do
     local b = v.badge and badge_str(v.badge())
-    local prefix = (S.active == v.id) and '▎' or ' '
+    local marked = (S.active == v.id) or (cur_line == i)
+    local prefix = marked and '▎' or ' '
     lines[i] = prefix .. v.icon .. (b or '')
     badges[i] = b and { col = #(prefix .. v.icon), hl = v.badge_hl } or nil
   end
@@ -96,7 +105,7 @@ local function render_bar()
   vim.bo[S.ab_buf].modifiable = false
   api.nvim_buf_clear_namespace(S.ab_buf, NS, 0, -1)
   for i, v in ipairs(VIEWS) do
-    local grp = (S.active == v.id) and 'CSAbActive' or 'CSAbInactive'
+    local grp = (S.active == v.id or cur_line == i) and 'CSAbActive' or 'CSAbInactive'
     api.nvim_buf_add_highlight(S.ab_buf, NS, grp, i - 1, 0, -1)
     if badges[i] then
       api.nvim_buf_add_highlight(S.ab_buf, NS, badges[i].hl, i - 1, badges[i].col, -1)
@@ -150,9 +159,9 @@ local function ensure_bar()
   api.nvim_win_set_width(S.ab_win, 5)
   local wo = vim.wo[S.ab_win]
   wo.number = false; wo.relativenumber = false; wo.signcolumn = 'no'
-  wo.wrap = false; wo.cursorline = true; wo.winfixwidth = true
+  wo.wrap = false; wo.cursorline = false; wo.winfixwidth = true
   wo.winfixbuf = true; wo.foldcolumn = '0'; wo.statuscolumn = ''
-  wo.winhighlight = 'Normal:CSAbBg,CursorLine:CSAbSel'
+  wo.winhighlight = 'Normal:CSAbBg'
   wo.winbar = ''
 
   local o = { buffer = S.ab_buf, nowait = true, silent = true }
@@ -170,10 +179,11 @@ local function ensure_bar()
   })
   -- Tooltip with the view name follows the cursor in the bar
   api.nvim_create_autocmd({ 'CursorMoved', 'WinEnter' }, {
-    buffer = S.ab_buf, callback = show_tip,
+    buffer = S.ab_buf, callback = function() render_bar(); show_tip() end,
   })
   api.nvim_create_autocmd({ 'WinLeave', 'BufLeave' }, {
-    buffer = S.ab_buf, callback = hide_tip,
+    -- schedule so focus has actually left before we re-render (strip clears)
+    buffer = S.ab_buf, callback = function() hide_tip(); vim.schedule(render_bar) end,
   })
   render_bar()
 end
@@ -213,8 +223,17 @@ function M.close()
   S.ab_win = nil
 end
 
+-- Focus-first toggle: closed → open + focus; open but unfocused → focus;
+-- already focused → close.
 function M.toggle()
-  if S.ab_win and api.nvim_win_is_valid(S.ab_win) then M.close() else M.open() end
+  if not (S.ab_win and api.nvim_win_is_valid(S.ab_win)) then
+    M.open()
+    M.focus()
+  elseif api.nvim_get_current_win() == S.ab_win then
+    M.close()
+  else
+    M.focus()
+  end
 end
 
 -- Open (if needed) and move focus into the bar, cursor on the active view.
@@ -232,9 +251,47 @@ function M.refresh()
   if S.ab_win and api.nvim_win_is_valid(S.ab_win) then render_bar() end
 end
 
+-- Panels are winfixwidth, but Neovim still inflates them when the only flexible
+-- (editor) window in their row closes — the freed columns have nowhere else to
+-- go. Re-pin each known panel to its target width on layout changes, but only
+-- while a flexible window exists to absorb the slack (else we'd oscillate).
+local FIXED_WIDTH = {
+  cs_activitybar = 5,
+  cs_filetree    = 30,
+  cs_gitui       = 44,
+  cs_outline     = 34,
+  cs_diagpanel   = 50,
+}
+
+local function repin_widths()
+  local wins = api.nvim_list_wins()
+  -- An "absorber" is any window that can freely grow/shrink to take the slack:
+  -- not winfixwidth and not one of our fixed-width panels. A plain editor, a
+  -- terminal, or the dashboard all qualify — buftype doesn't matter.
+  local has_absorber = false
+  for _, win in ipairs(wins) do
+    if api.nvim_win_is_valid(win) and not vim.wo[win].winfixwidth
+       and not FIXED_WIDTH[vim.bo[api.nvim_win_get_buf(win)].filetype] then
+      has_absorber = true; break
+    end
+  end
+  if not has_absorber then return end
+  for _, win in ipairs(wins) do
+    if api.nvim_win_is_valid(win) then
+      local target = FIXED_WIDTH[vim.bo[api.nvim_win_get_buf(win)].filetype]
+      if target and api.nvim_win_get_width(win) ~= target then
+        pcall(api.nvim_win_set_width, win, target)
+      end
+    end
+  end
+end
+
 function M.setup()
   setup_highlights()
   api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  api.nvim_create_autocmd({ 'WinResized', 'WinClosed' }, {
+    callback = function() vim.schedule(repin_widths) end,
+  })
   api.nvim_create_autocmd({ 'DiagnosticChanged', 'BufEnter', 'TermClose' }, {
     callback = function() M.refresh() end,
   })

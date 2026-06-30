@@ -14,17 +14,21 @@ local function read_file_head(path, lines)
   return table.concat(take, '\n')
 end
 
-local function git(cmd)
-  local out = fn.trim(fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' ' .. cmd .. ' 2>/dev/null'))
+local function active_cwd()
+  return require('claudespace.repos').active_cwd()
+end
+
+local function git(cmd, cwd)
+  local out = fn.trim(fn.system('git -C ' .. fn.shellescape(cwd) .. ' ' .. cmd .. ' 2>/dev/null'))
   return vim.v.shell_error == 0 and out or ''
 end
 
-local function generate()
-  local cwd    = fn.getcwd()
+local function generate(cwd)
+  cwd          = cwd or active_cwd()
   local name   = fn.fnamemodify(cwd, ':t')
-  local branch = git('branch --show-current')
-  local status = git('status --short')
-  local log    = git('log --oneline -8')
+  local branch = git('branch --show-current', cwd)
+  local status = git('status --short', cwd)
+  local log    = git('log --oneline -8', cwd)
 
   local parts = {}
   local function add(s) table.insert(parts, s) end
@@ -78,13 +82,13 @@ local function generate()
   return table.concat(parts, '\n')
 end
 
----Update `.claude/WORKSPACE.md` in the current project root.
-function M.update()
-  local cwd     = fn.getcwd()
+---Update `.claude/WORKSPACE.md` in the active repo's root.
+function M.update(cwd)
+  cwd           = cwd or active_cwd()
   local dir     = cwd .. '/.claude'
   local outfile = dir .. '/WORKSPACE.md'
   fn.mkdir(dir, 'p')
-  local content = generate()
+  local content = generate(cwd)
   pcall(fn.writefile, vim.split(content, '\n', { plain = true }), outfile)
 end
 
@@ -93,10 +97,11 @@ end
 ---@param cwd?   string
 function M.inject_to_job(job_id, cwd)
   if not job_id or job_id <= 0 then return end
-  local dir     = (cwd or fn.getcwd()) .. '/.claude'
+  cwd           = cwd or active_cwd()
+  local dir     = cwd .. '/.claude'
   local outfile = dir .. '/WORKSPACE.md'
   fn.mkdir(dir, 'p')
-  pcall(fn.writefile, vim.split(generate(), '\n', { plain = true }), outfile)
+  pcall(fn.writefile, vim.split(generate(cwd), '\n', { plain = true }), outfile)
   pcall(fn.chansend, job_id, '@' .. outfile .. '\n')
 end
 
@@ -121,8 +126,9 @@ end
 
 ---Inject context into the active Claude terminal session.
 function M.inject()
-  M.update()
-  local outfile = fn.getcwd() .. '/.claude/WORKSPACE.md'
+  local cwd = active_cwd()
+  M.update(cwd)
+  local outfile = cwd .. '/.claude/WORKSPACE.md'
   local sent = M.send_to_active('@' .. outfile .. '\n')
   vim.notify(
     sent and 'Context injected into Claude session'

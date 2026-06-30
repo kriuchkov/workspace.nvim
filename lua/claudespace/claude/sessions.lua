@@ -45,24 +45,7 @@ local function win_opts()
   vim.wo.scrolloff = 0
 end
 
-local function ensure_editor_win()
-  local function special(win)
-    local b = api.nvim_win_get_buf(win)
-    return vim.wo[win].winfixbuf
-        or vim.bo[b].buftype ~= ''
-        or vim.bo[b].filetype:match('^cs_')
-  end
-  if not special(api.nvim_get_current_win()) then return end
-  vim.cmd 'wincmd p'
-  if not special(api.nvim_get_current_win()) then return end
-  for _, w in ipairs(api.nvim_list_wins()) do
-    if api.nvim_win_is_valid(w) and not special(w) then
-      api.nvim_set_current_win(w); return
-    end
-  end
-  -- vsplit without enew — the split reuses the current buffer, no orphan [No Name]
-  vim.cmd 'vsplit'
-end
+local ensure_editor_win = require('claudespace.claude.util').ensure_editor_win
 
 -- Delete buf if it's a listed empty [No Name] buffer (cleanup after M.new replaces it).
 local function wipe_empty(buf)
@@ -78,8 +61,20 @@ end
 
 ---Create and open a new Claude session in the current window.
 ---@param cwd? string
+-- The repo a session belongs to (by cwd), for grouping/labelling.
+local function session_repo(s)
+  local ok, repos = pcall(require, 'claudespace.repos')
+  return ok and repos.of(s.cwd) or nil
+end
+
 function M.new(cwd)
-  cwd = cwd or fn.getcwd()
+  ensure_editor_win()
+  if not cwd then
+    -- Start in the active repo so Claude picks up that repo's CLAUDE.md cascade.
+    local ok, repos = pcall(require, 'claudespace.repos')
+    local m = ok and repos.active()
+    cwd = (m and m.abspath) or fn.getcwd()
+  end
   local id   = next_id; next_id = next_id + 1
   local name = 'Chat ' .. id
   local sess = { id = id, name = name, cwd = cwd }
@@ -122,6 +117,7 @@ end
 ---@param id number
 function M.open(id)
   local sess = sessions[id]; if not sess then return end
+  ensure_editor_win()
   local buf  = live_buf(id)
   if buf then
     api.nvim_win_set_buf(0, buf)
@@ -216,12 +212,25 @@ function M.pick()
   pickers.new({}, {
     prompt_title = 'Claude Sessions',
     finder = finders.new_table {
-      results = ordered(),
+      results = (function()
+        local list = ordered()
+        table.sort(list, function(a, b)
+          local ra = (session_repo(a) or {}).label or ''
+          local rb = (session_repo(b) or {}).label or ''
+          if ra ~= rb then return ra < rb end
+          return a.id < b.id
+        end)
+        return list
+      end)(),
       entry_maker = function(s)
         local active = s.id == active_id
-        local label  = (active and '⚡ ' or '  ') .. s.name
-        if s.cwd then label = label .. '  ' .. fn.fnamemodify(s.cwd, ':~') end
-        return { value = s, display = label, ordinal = s.name .. (s.cwd or '') }
+        local repo   = session_repo(s)
+        local tag    = repo and ('[' .. repo.label .. '] ') or ''
+        local label  = (active and '⚡ ' or '  ') .. tag .. s.name
+        return {
+          value = s, display = label,
+          ordinal = (repo and repo.label or '') .. ' ' .. s.name,
+        }
       end,
     },
     sorter = conf.generic_sorter {},
@@ -291,11 +300,16 @@ local function start_background(sess)
   vim.b[buf].cs_session_id = sess.id
   sess.bufnr = buf
 
-  vim.cmd 'botright 1split'
-  local tmp_win = api.nvim_get_current_win()
-  api.nvim_win_set_buf(tmp_win, buf)
+  -- termopen needs the buffer current in a window to size the PTY. Use a float
+  -- with noautocmd instead of a split: it doesn't reflow the real layout (no
+  -- flicker) and fires no Win* autocmds. Everything here is synchronous, so the
+  -- float never paints before we close it.
+  local tmp_win = api.nvim_open_win(buf, true, {
+    relative = 'editor', width = 80, height = 24,
+    row = 0, col = 0, focusable = false, style = 'minimal', noautocmd = true,
+  })
   fn.termopen("zsh -i -c 'claude'", { cwd = sess.cwd })
-  -- Close the split — process keeps running in the buffer
+  -- Close the float — process keeps running in the buffer
   pcall(api.nvim_win_close, tmp_win, true)
   pcall(api.nvim_set_current_win, orig_win)
 
@@ -374,21 +388,17 @@ function M.setup()
   -- Keymaps
   local map = vim.keymap.set
 
-  map({ 'n', 't' }, '<leader>cc', function()
-    ensure_editor_win(); M.toggle()
-  end, { desc = 'Claude: open/toggle', silent = true })
+  map({ 'n', 't' }, '<leader>cc', M.toggle,
+    { desc = 'Claude: open/toggle', silent = true })
 
-  map({ 'n', 't' }, '<leader>cn', function()
-    ensure_editor_win(); M.new()
-  end, { desc = 'Claude: new session', silent = true })
+  map({ 'n', 't' }, '<leader>cn', function() M.new() end,
+    { desc = 'Claude: new session', silent = true })
 
-  map({ 'n', 't' }, '<leader>ch', function()
-    ensure_editor_win(); M.prev()
-  end, { desc = 'Claude: prev session', silent = true })
+  map({ 'n', 't' }, '<leader>ch', M.prev,
+    { desc = 'Claude: prev session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cl', function()
-    ensure_editor_win(); M.next()
-  end, { desc = 'Claude: next session', silent = true })
+  map({ 'n', 't' }, '<leader>cl', M.next,
+    { desc = 'Claude: next session', silent = true })
 
   map({ 'n', 't' }, '<leader>cs', M.pick,
     { desc = 'Claude: pick session', silent = true })

@@ -20,7 +20,7 @@ local function parse_agents_md(path)
 end
 
 local function open_agents_panel()
-  local project_agents = parse_agents_md(vim.fn.getcwd() .. '/AGENTS.md')
+  local project_agents = parse_agents_md(require('claudespace.repos').active_cwd() .. '/AGENTS.md')
   local global_agents = parse_agents_md(vim.fn.expand '~/.claude/AGENTS.md')
 
   local lines = {}

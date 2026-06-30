@@ -80,14 +80,21 @@ end
 
 function M.restore(layout)
   if not layout then return end
-  -- Collapse to a single window first (filetree/outline windows are excluded)
+  -- Focus a real editor window (skip() excludes sidebars/panels/terminals).
   for _, win in ipairs(api.nvim_list_wins()) do
     if not skip(win) then
       api.nvim_set_current_win(win)
       break
     end
   end
-  vim.cmd 'silent! only'
+  -- Collapse editor windows to one. We can't use `:only` — it ignores
+  -- winfixbuf and would wipe the sidebars too. Close only non-skip windows.
+  local keep = api.nvim_get_current_win()
+  for _, win in ipairs(api.nvim_list_wins()) do
+    if win ~= keep and api.nvim_win_is_valid(win) and not skip(win) then
+      pcall(api.nvim_win_close, win, false)
+    end
+  end
   restore_node(layout)
 end
 

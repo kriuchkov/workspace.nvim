@@ -11,9 +11,17 @@ local STATUS_HL = {
   ['?'] = 'Comment',     ['!'] = 'Comment',
 }
 
+-- The repo this panel operates on: an explicit override (set when opened from
+-- the repos overview), else the active repo, else cwd.
+local function git_cwd()
+  if M._cwd then return M._cwd end
+  local ok, repos = pcall(require, 'claudespace.repos')
+  local m = ok and repos.active()
+  return (m and m.abspath) or fn.getcwd()
+end
+
 local function git(cmd)
-  local cwd = fn.getcwd()
-  return fn.trim(fn.system('git -C ' .. fn.shellescape(cwd) .. ' ' .. cmd .. ' 2>/dev/null'))
+  return fn.trim(fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' ' .. cmd .. ' 2>/dev/null'))
 end
 
 local function git_branch()
@@ -22,7 +30,7 @@ end
 
 local function parse_status()
   local unstaged, staged = {}, {}
-  local out = fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' status --porcelain=v1 2>/dev/null')
+  local out = fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' status --porcelain=v1 2>/dev/null')
   for line in out:gmatch('[^\n]+') do
     if #line >= 4 then
       local x, y = line:sub(1,1), line:sub(2,2)
@@ -49,7 +57,7 @@ local function build(unstaged, staged)
   local function act(a) actions[#lines] = a end
 
   local branch = git_branch()
-  local cwd    = fn.fnamemodify(fn.getcwd(), ':~')
+  local cwd    = fn.fnamemodify(git_cwd(), ':~')
   add('')
   add('  Git Status  [' .. branch .. ']  ' .. cwd, 'CSTreeDir')
   add('')
@@ -83,7 +91,8 @@ end
 
 -- anchor_win: when given, open as a split to its right (activity-bar panel);
 -- otherwise a centered float.
-function M.open(anchor_win)
+function M.open(anchor_win, cwd)
+  M._cwd = cwd  -- explicit repo override (from repos overview), or nil for active
   local unstaged, staged = parse_status()
   local lines, hls, actions = build(unstaged, staged)
 
@@ -147,9 +156,9 @@ function M.open(anchor_win)
     local a = current_action()
     if not a then return end
     if a.section == 'unstaged' then
-      fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' add -- ' .. fn.shellescape(a.path))
+      fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' add -- ' .. fn.shellescape(a.path))
     else
-      fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' restore --staged -- ' .. fn.shellescape(a.path))
+      fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' restore --staged -- ' .. fn.shellescape(a.path))
     end
     refresh()
   end, o)
@@ -167,7 +176,7 @@ function M.open(anchor_win)
     local diff_cmd = a.section == 'staged'
       and 'git diff --staged -- ' .. fn.shellescape(a.path)
       or  'git diff -- '          .. fn.shellescape(a.path)
-    local diff = fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' ' .. diff_cmd)
+    local diff = fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' ' .. diff_cmd)
     if diff == '' then
       vim.notify('No diff for ' .. a.path, vim.log.levels.INFO)
       return
@@ -183,7 +192,7 @@ function M.open(anchor_win)
   end, o)
 
   vim.keymap.set('n', 'c', function()
-    local cwd  = fn.getcwd()
+    local cwd  = git_cwd()
     local diff = fn.trim(fn.system('git -C ' .. fn.shellescape(cwd) .. ' diff --staged 2>/dev/null'))
     if diff == '' then
       vim.notify('Nothing staged to commit', vim.log.levels.WARN)
@@ -214,6 +223,7 @@ function M.open(anchor_win)
     -- Run in background so UI doesn't freeze on large diffs
     local result = {}
     fn.jobstart({ 'claude', '--print', prompt }, {
+      cwd = cwd,
       stdout_buffered = true,
       on_stdout = function(_, data) if data then vim.list_extend(result, data) end end,
       on_exit = function(_, code)
@@ -227,7 +237,7 @@ function M.open(anchor_win)
 
   vim.keymap.set('n', 'P', function()
     vim.notify('Pushing…', vim.log.levels.INFO)
-    local out = fn.system('git -C ' .. fn.shellescape(fn.getcwd()) .. ' push 2>&1')
+    local out = fn.system('git -C ' .. fn.shellescape(git_cwd()) .. ' push 2>&1')
     vim.notify(out ~= '' and out or 'Push complete.', vim.log.levels.INFO)
     refresh()
   end, o)
@@ -236,6 +246,7 @@ end
 function M.close()
   if M._win and api.nvim_win_is_valid(M._win) then pcall(api.nvim_win_close, M._win, true) end
   M._win = nil
+  M._cwd = nil
 end
 
 function M.setup()

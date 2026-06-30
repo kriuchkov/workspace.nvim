@@ -8,7 +8,7 @@ local ns  = api.nvim_create_namespace('cs_testui')
 -- ── Framework detection ───────────────────────────────────────────────────────
 
 local function detect_framework()
-  local cwd = fn.getcwd()
+  local cwd = require('claudespace.repos').active_cwd()
   if fn.filereadable(cwd .. '/go.mod') == 1 then
     return 'go', 'go test ./... 2>&1'
   elseif fn.filereadable(cwd .. '/Cargo.toml') == 1 then
@@ -170,7 +170,7 @@ function M.run()
 
   local output = {}
   vim.fn.jobstart(cmd, {
-    cwd = fn.getcwd(),
+    cwd = require('claudespace.repos').active_cwd(),
     stdout_buffered = true,
     stderr_buffered = true,
     on_stdout = function(_, data) if data then vim.list_extend(output, data) end end,

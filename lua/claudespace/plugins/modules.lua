@@ -1,6 +1,7 @@
 -- Bootstrap all claudespace custom modules.
 -- Runs after plugins/ui.lua so icons and theme are already active.
 
+require('claudespace.repos').setup()
 require('claudespace.tabline').setup()
 require('claudespace.filetree').setup()
 require('claudespace.statusline').setup()

@@ -22,18 +22,19 @@ end
 function M.shell()
   vim.ui.input({ prompt = '$ task: ' }, function(task)
     if not task or task == '' then return end
+    local cwd = require('claudespace.repos').active_cwd()
     run(table.concat({
       'Generate a shell command for: ' .. task,
-      'Working directory: ' .. vim.fn.getcwd(),
+      'Working directory: ' .. cwd,
       'Shell: ' .. (vim.o.shell or 'bash'),
       'Return ONLY the raw command. No explanation, no markdown fences.',
-    }, '\n'), 'generating command…', function(cmd)
-      cmd = vim.trim(cmd):gsub('^`+', ''):gsub('`+$', '')
+    }, '\n'), 'generating command…', function(cmd_out)
+      local cmd = vim.trim(cmd_out):gsub('^`+', ''):gsub('`+$', '')
       util.preview_float({ '$ ' .. cmd }, ' Shell Command ', function()
         vim.cmd 'botright 12split'
         local buf = vim.api.nvim_create_buf(false, true)
         vim.api.nvim_win_set_buf(0, buf)
-        vim.fn.termopen(cmd, { cwd = vim.fn.getcwd() })
+        vim.fn.termopen(cmd, { cwd = cwd })
         vim.cmd 'startinsert'
       end)
     end, { model = 'claude-haiku-4-5-20251001' })
@@ -144,7 +145,7 @@ end
 local function apply_changes(changes)
   local paths   = vim.tbl_keys(changes)
   local idx     = 1
-  local cwd     = vim.fn.getcwd()
+  local cwd     = require('claudespace.repos').active_cwd()
 
   local function next_file()
     if idx > #paths then

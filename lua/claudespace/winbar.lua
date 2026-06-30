@@ -7,6 +7,19 @@ function M.render()
   local buf  = api.nvim_get_current_buf()
   local name = api.nvim_buf_get_name(buf)
 
+  -- Workspace / active-repo segment (left, multi-repo only)
+  local ws_part = ''
+  local ok_repos, repos = pcall(require, 'claudespace.repos')
+  if ok_repos and repos.is_multi() then
+    local m = repos.active()
+    if m then
+      local st     = repos.status(m)
+      local branch = (st and st.branch ~= '') and ('%#CSWinbarWsBranch# ' .. st.branch) or ''
+      local dirty  = (st and st.dirty > 0) and ('%#CSWinbarWsDirty# ●' .. st.dirty) or ''
+      ws_part = '%#CSWinbarWs# ' .. repos.name() .. ' › ' .. m.label .. branch .. dirty .. '%#CSWinbarDir#  '
+    end
+  end
+
   -- Path segment (left)
   local path_part
   if name == '' then
@@ -32,7 +45,7 @@ function M.render()
     end
   end
 
-  return path_part .. navic_part
+  return ws_part .. path_part .. navic_part
 end
 
 local function setup_highlights()
@@ -40,6 +53,9 @@ local function setup_highlights()
   hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#13151f' })
   hi(0, 'CSWinbarFile', { fg = '#a9b1d6', bg = '#13151f', bold = true })
   hi(0, 'CSWinbarNav',  { fg = '#7aa2f7', bg = '#13151f' })
+  hi(0, 'CSWinbarWs',       { fg = '#7dcfff', bg = '#13151f', bold = true })
+  hi(0, 'CSWinbarWsBranch', { fg = '#9ece6a', bg = '#13151f' })
+  hi(0, 'CSWinbarWsDirty',  { fg = '#e0af68', bg = '#13151f' })
 end
 
 local SKIP_FT = {

@@ -1,6 +1,40 @@
 -- Shared helpers for Claude modules.
 local M = {}
 
+-- ── Window helpers ────────────────────────────────────────────────────────────
+
+local function special(win)
+  if not vim.api.nvim_win_is_valid(win) then return true end
+  local b = vim.api.nvim_win_get_buf(win)
+  return vim.wo[win].winfixbuf
+      or vim.bo[b].buftype ~= ''
+      or vim.bo[b].filetype:match('^cs_') ~= nil
+end
+
+-- Move focus to a real editor window (creating one if needed) so the caller can
+-- safely replace its buffer. Never lands on a sidebar / terminal / winfixbuf win.
+function M.ensure_editor_win()
+  if not special(vim.api.nvim_get_current_win()) then return end
+
+  vim.cmd 'wincmd p'
+  if not special(vim.api.nvim_get_current_win()) then return end
+
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if not special(w) then vim.api.nvim_set_current_win(w); return end
+  end
+
+  -- No editor window exists. Split from a non-winfixbuf window if possible
+  -- (splitting a winfixbuf window copies the flag), then clear it so the
+  -- caller's nvim_win_set_buf can't fail with E1513.
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_is_valid(w) and not vim.wo[w].winfixbuf then
+      vim.api.nvim_set_current_win(w); break
+    end
+  end
+  vim.cmd 'vsplit'
+  vim.wo[vim.api.nvim_get_current_win()].winfixbuf = false
+end
+
 -- ── Spinner ───────────────────────────────────────────────────────────────────
 
 local FRAMES = { '⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷' }
