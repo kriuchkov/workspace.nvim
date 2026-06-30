@@ -122,11 +122,13 @@ function M.load()
   end
 
   sort_members(members)
-  state.root    = root
-  state.members = members
-  state.loaded  = true
-  state.status  = {}
-  state.active  = nil
+  state.root     = root
+  state.members  = members
+  state.loaded   = true
+  state.status   = {}
+  state.purpose  = {}
+  state.depgraph = nil
+  state.active   = nil
   M.refresh_active(true)
   return members
 end
@@ -154,6 +156,85 @@ function M.of(path)
 end
 
 function M.active() return state.active end
+
+-- The member whose root is exactly `path` (repos.of matches descendants only).
+function M.at(path)
+  path = strip_slash(fn.fnamemodify(path, ':p'))
+  for _, m in ipairs(state.members) do
+    if m.abspath == path then return m end
+  end
+end
+
+-- ── Workspace map (for Claude context) ────────────────────────────────────────
+
+-- One-line purpose of a repo: first heading/prose line of its CLAUDE.md/README.
+function M.purpose(member)
+  if state.purpose[member.abspath] == nil then
+    -- Skip uninformative titles (the filename or the repo's own name); keep the
+    -- first one as a fallback but prefer a real description line.
+    local generic = {
+      ['claude.md'] = true, ['readme'] = true, ['readme.md'] = true,
+      [member.label:lower()] = true,
+    }
+    local result, fallback
+    for _, f in ipairs { '/CLAUDE.md', '/README.md' } do
+      local p = member.abspath .. f
+      if fn.filereadable(p) == 1 then
+        for _, line in ipairs(fn.readfile(p, '', 20)) do
+          local t = vim.trim(line):gsub('^#+%s*', '')
+          if t ~= '' and not t:match('^%-%-%-') and not t:match('^!%[') then
+            if generic[t:lower()] then
+              fallback = fallback or t
+            else
+              result = t; break
+            end
+          end
+        end
+      end
+      if result then break end
+    end
+    state.purpose[member.abspath] = result or fallback or false
+  end
+  return state.purpose[member.abspath] or nil
+end
+
+local function go_module_path(abspath)
+  local gomod = abspath .. '/go.mod'
+  if fn.filereadable(gomod) == 0 then return nil end
+  for _, line in ipairs(fn.readfile(gomod, '', 5)) do
+    local m = line:match('^module%s+(%S+)')
+    if m then return m end
+  end
+end
+
+-- Intra-workspace dependency edges (Go): repo.path -> { dep repo.path, ... },
+-- derived from each go.mod's requires that resolve to another member's module.
+function M.dependency_graph()
+  if state.depgraph then return state.depgraph end
+  local mod_to_repo = {}
+  for _, m in ipairs(state.members) do
+    local mp = go_module_path(m.abspath)
+    if mp then mod_to_repo[mp] = m.path end
+  end
+  local graph = {}
+  for _, m in ipairs(state.members) do
+    local gomod = m.abspath .. '/go.mod'
+    if fn.filereadable(gomod) == 1 then
+      local deps = {}
+      for _, line in ipairs(fn.readfile(gomod)) do
+        local dep = line:match('^%s+(%S+)%s+v') or line:match('^require%s+(%S+)%s+v')
+        if dep and mod_to_repo[dep] and mod_to_repo[dep] ~= m.path then
+          deps[mod_to_repo[dep]] = true
+        end
+      end
+      local list = {}
+      for d in pairs(deps) do list[#list + 1] = d end
+      if #list > 0 then table.sort(list); graph[m.path] = list end
+    end
+  end
+  state.depgraph = graph
+  return graph
+end
 
 -- The directory repo-scoped operations (Claude, tests, CLAUDE.md) should run in:
 -- the active repo's root, falling back to cwd in single-repo / no-match cases.
