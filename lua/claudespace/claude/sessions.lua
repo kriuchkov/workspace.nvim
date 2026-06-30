@@ -51,6 +51,12 @@ local function group_claude(buf)
   pcall(function() require('claudespace.tabline').group_add(buf, 'claude') end)
 end
 
+-- Build the launch command. flag '' = fresh chat, ' --continue' = resume the
+-- most recent conversation in the cwd, ' --resume' = pick from past sessions.
+local function claude_cmd(flag)
+  return "zsh -i -c 'claude" .. (flag or '') .. "'"
+end
+
 local ensure_editor_win = require('claudespace.claude.util').ensure_editor_win
 
 -- Delete buf if it's a listed empty [No Name] buffer (cleanup after M.new replaces it).
@@ -73,7 +79,7 @@ local function session_repo(s)
   return ok and repos.of(s.cwd) or nil
 end
 
-function M.new(cwd)
+function M.new(cwd, flag)
   ensure_editor_win()
   if not cwd then
     -- Start in the active repo so Claude picks up that repo's CLAUDE.md cascade.
@@ -93,7 +99,7 @@ function M.new(cwd)
   vim.b[buf].cs_session_id = id
   group_claude(buf)
   api.nvim_win_set_buf(0, buf)
-  local job_id = fn.termopen("zsh -i -c 'claude'", { cwd = cwd })
+  local job_id = fn.termopen(claude_cmd(flag), { cwd = cwd })
   sess.bufnr  = buf
   sess.job_id = job_id
 
@@ -134,7 +140,7 @@ function M.open(id)
     vim.b[buf].cs_session_id = id
     group_claude(buf)
     api.nvim_win_set_buf(0, buf)
-    fn.termopen("zsh -i -c 'claude'", { cwd = sess.cwd })
+    fn.termopen(claude_cmd(' --continue'), { cwd = sess.cwd })  -- resume the conversation
     sess.bufnr = buf
     vim.schedule(function()
       if api.nvim_buf_is_valid(buf) then name_buf(buf, sess.name) end
@@ -156,6 +162,12 @@ function M.toggle()
   if #list == 0 then M.new(); return end
   M.open((sessions[active_id] or list[1]).id)
 end
+
+---New session resuming the most recent conversation in the (active) repo.
+function M.continue(cwd) M.new(cwd, ' --continue') end
+
+---New session running Claude's `--resume` picker to restore any past conversation.
+function M.resume(cwd) M.new(cwd, ' --resume') end
 
 ---Next session (wraps).
 function M.next()
@@ -317,7 +329,7 @@ local function start_background(sess)
     relative = 'editor', width = 80, height = 24,
     row = 0, col = 0, focusable = false, style = 'minimal', noautocmd = true,
   })
-  fn.termopen("zsh -i -c 'claude'", { cwd = sess.cwd })
+  fn.termopen(claude_cmd(' --continue'), { cwd = sess.cwd })  -- resume on workspace restore
   -- Close the float — process keeps running in the buffer
   pcall(api.nvim_win_close, tmp_win, true)
   pcall(api.nvim_set_current_win, orig_win)
@@ -402,6 +414,12 @@ function M.setup()
 
   map({ 'n', 't' }, '<leader>cn', function() M.new() end,
     { desc = 'Claude: new session', silent = true })
+
+  map({ 'n', 't' }, '<leader>cu', function() M.resume() end,
+    { desc = 'Claude: resume past session (--resume)', silent = true })
+
+  api.nvim_create_user_command('ClaudeResume',   function() M.resume() end,   { desc = 'Resume a past Claude session' })
+  api.nvim_create_user_command('ClaudeContinue', function() M.continue() end, { desc = 'Continue the most recent Claude conversation' })
 
   map({ 'n', 't' }, '<leader>ch', M.prev,
     { desc = 'Claude: prev session', silent = true })
