@@ -553,6 +553,19 @@ function M.show_info(path)
   for _, k in ipairs { 'q', '<Esc>' } do vim.keymap.set('n', k, close, o) end
 end
 
+-- Open a terminal in a bottom split rooted at the active repo (not the whole
+-- workspace) — for `go test ./...` / `cargo test` in the right service.
+function M.terminal()
+  local cwd = M.active_cwd()
+  vim.cmd 'botright split'
+  api.nvim_win_set_height(0, math.floor(vim.o.lines * 0.28))
+  local buf = api.nvim_create_buf(true, false)
+  api.nvim_win_set_buf(0, buf)
+  fn.termopen(vim.o.shell, { cwd = cwd })
+  vim.cmd 'startinsert'
+  vim.notify('Terminal in ' .. fn.fnamemodify(cwd, ':t'), vim.log.levels.INFO)
+end
+
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
@@ -579,6 +592,7 @@ function M.setup()
     { desc = 'Show workspace repos' })
 
   vim.keymap.set('n', '<leader>wp', M.show, { silent = true, desc = 'Workspace: repos overview' })
+  vim.keymap.set('n', '<leader>wt', M.terminal, { silent = true, desc = 'Workspace: terminal in active repo' })
 end
 
 return M

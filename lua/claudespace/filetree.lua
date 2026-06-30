@@ -520,6 +520,8 @@ local HELP_LINES = {
   '  C          set dir as root',
   '  -          go up to parent root',
   '  i          repo info (workspace)',
+  '  s          git stage / unstage',
+  '  gd         git diff',
   '  H          toggle hidden files',
   '  R          refresh git status',
   '  q / <Esc>  close tree',
@@ -555,6 +557,62 @@ local function repo_info()
   require('claudespace.repos').show_info(e and e.path or S.root)
 end
 
+-- ── Inline git ────────────────────────────────────────────────────────────────
+
+local function git_root_of(path)
+  local ok, repos = pcall(require, 'claudespace.repos')
+  local m = ok and repos.of(path)
+  if m then return m.abspath end
+  local dir = fn.isdirectory(path) == 1 and path or fn.fnamemodify(path, ':h')
+  local gr  = fn.trim(fn.system('git -C ' .. fn.shellescape(dir) .. ' rev-parse --show-toplevel 2>/dev/null'))
+  return (vim.v.shell_error == 0 and gr ~= '') and gr or nil
+end
+
+-- Stage a file (or everything under a dir); toggles staged↔unstaged for a file.
+local function git_stage()
+  local e = entry_at_cursor()
+  if not e then return end
+  local root = git_root_of(e.path)
+  if not root then vim.notify('Not in a git repo', vim.log.levels.WARN); return end
+  local rel = e.path:sub(#root + 2)
+  local C   = 'git -C ' .. fn.shellescape(root) .. ' '
+  if e.is_dir then
+    fn.system(C .. 'add -- ' .. fn.shellescape(rel))
+  else
+    local st = fn.systemlist(C .. 'status --porcelain -- ' .. fn.shellescape(rel))
+    local x  = st[1] and st[1]:sub(1, 1) or ' '
+    if x ~= ' ' and x ~= '?' then
+      fn.system(C .. 'restore --staged -- ' .. fn.shellescape(rel))
+    else
+      fn.system(C .. 'add -- ' .. fn.shellescape(rel))
+    end
+  end
+  refresh_git(); render()
+  pcall(function()
+    local repos = require('claudespace.repos')
+    if repos.of(e.path) then repos.refresh_status(repos.of(e.path)) end
+  end)
+end
+
+-- Show the diff of the file at the cursor in a scratch split.
+local function git_diff()
+  local e = entry_at_cursor()
+  if not e or e.is_dir then return end
+  local root = git_root_of(e.path)
+  if not root then vim.notify('Not in a git repo', vim.log.levels.WARN); return end
+  local rel  = e.path:sub(#root + 2)
+  local diff = fn.system('git -C ' .. fn.shellescape(root) .. ' diff HEAD -- ' .. fn.shellescape(rel))
+  if vim.trim(diff) == '' then vim.notify('No diff for ' .. e.name, vim.log.levels.INFO); return end
+  api.nvim_set_current_win(editor_win())
+  vim.cmd 'botright new'
+  local dbuf = api.nvim_get_current_buf()
+  vim.bo[dbuf].buftype = 'nofile'; vim.bo[dbuf].bufhidden = 'wipe'
+  vim.bo[dbuf].filetype = 'diff'
+  api.nvim_buf_set_lines(dbuf, 0, -1, false, vim.split(diff, '\n'))
+  vim.bo[dbuf].modifiable = false
+  vim.keymap.set('n', 'q', '<cmd>bd<CR>', { buffer = dbuf, silent = true })
+end
+
 -- ── Window ────────────────────────────────────────────────────────────────────
 
 local function create_buf()
@@ -582,6 +640,8 @@ local function create_buf()
   k('n', 'C',     change_root,       o)
   k('n', '-',     root_up,           o)
   k('n', 'i',     repo_info,         o)
+  k('n', 's',     git_stage,         o)
+  k('n', 'gd',    git_diff,          o)
   k('n', '?',     show_help,         o)
   return buf
 end
