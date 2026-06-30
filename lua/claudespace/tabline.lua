@@ -580,6 +580,7 @@ function M.render()
   local cur   = vim.api.nvim_get_current_buf()
   local prev_gid = nil   -- track group boundaries
   local pos   = 0        -- position index for CSTabSwitch
+  local group_pos = 0    -- group index for <leader>N quick-jump numbering
 
   -- Count buffers per group for collapsed label
   local group_counts = {}
@@ -615,6 +616,8 @@ function M.render()
     -- Group label when a new group starts
     if gid ~= prev_gid then
       if grp then
+        group_pos = group_pos + 1
+        local num = (group_pos <= #SUPER) and (SUPER[group_pos] .. ' ') or ''
         local count = group_counts[gid] or 0
         local active_inside = grp.collapsed and (function()
           for _, b2 in ipairs(bufs) do
@@ -623,8 +626,8 @@ function M.render()
         end)()
         local marker = active_inside and ' ●' or ''
         local label = grp.collapsed
-          and (' ▶ ' .. grp.name .. ' (' .. count .. ')' .. marker .. ' ')
-          or  (' ▼ ' .. grp.name .. ' ')
+          and (' ' .. num .. '▶ ' .. grp.name .. ' (' .. count .. ')' .. marker .. ' ')
+          or  (' ' .. num .. '▼ ' .. grp.name .. ' ')
         u[#u+1] = '%#' .. group_hl(gid) .. '#'
         u[#u+1] = '%' .. gid .. '@v:lua.CSGroupToggle@'
         u[#u+1] = label
@@ -665,12 +668,7 @@ function M.render()
       u[#u+1] = (sel and '%#CSTabPinSel#' or '%#CSTabPin#') .. PIN_GLYPH .. tab_hl
     end
 
-    -- Quick-jump number (Alt+1..5) — only for the first 5 visible tabs
-    if pos <= #SUPER then
-      u[#u+1] = (sel and '%#CSTabNumSel#' or '%#CSTabNum#') .. ' ' .. SUPER[pos] .. ' ' .. tab_hl
-    else
-      u[#u+1] = '  '
-    end
+    u[#u+1] = '  '
 
     -- Icon (or terminal bolt)
     if buf.terminal then
@@ -926,6 +924,34 @@ function M.goto_n(n)
   if bufs[n] then set_buf_safe(bufs[n].bufnr) end
 end
 
+-- Groups in tabline order (first appearance of each gid in the sorted buffers).
+local function ordered_groups()
+  local seen, out = {}, {}
+  for _, b in ipairs(sorted_bufs(listed_bufs())) do
+    if b.gid and groups[b.gid] and not seen[b.gid] then
+      seen[b.gid] = true
+      out[#out + 1] = b.gid
+    end
+  end
+  return out
+end
+
+-- Jump to the n-th group: focus its most-recently-used buffer (expand if collapsed).
+function M.goto_group(n)
+  local gid = ordered_groups()[n]
+  if not gid then return end
+  local best, best_seq
+  for _, b in ipairs(sorted_bufs(listed_bufs())) do
+    if b.gid == gid then
+      local seq = buf_access[b.bufnr] or 0
+      if not best or seq > best_seq then best, best_seq = b.bufnr, seq end
+    end
+  end
+  if not best then return end
+  if groups[gid].collapsed then groups[gid].collapsed = false; invalidate() end
+  set_buf_safe(best)
+end
+
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
@@ -1006,11 +1032,11 @@ function M.setup()
     if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf)
     else M.close_normal(buf) end
   end, { silent = true, desc = 'Close tab' })
-  -- Jump to the n-th visible tab. <leader>N is terminal-proof; <A-N> is the
-  -- quick chord where the terminal forwards it.
+  -- <leader>N jumps to the n-th group (the numbered tabs); <A-N> jumps to the
+  -- n-th individual buffer within the current view (power users / no groups).
   for i = 1, 9 do
-    map('n', '<leader>' .. i, function() M.goto_n(i) end,
-      { silent = true, desc = 'Tab: go to ' .. i })
+    map('n', '<leader>' .. i, function() M.goto_group(i) end,
+      { silent = true, desc = 'Tab: go to group ' .. i })
     map('n', '<A-' .. i .. '>', function() M.goto_n(i) end, { silent = true })
   end
 
