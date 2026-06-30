@@ -40,6 +40,7 @@ else
     "claudespace.keymaps"
     "claudespace.health"
     "claudespace.repos"
+    "claudespace.gotofile"
     "claudespace.claude.util"
     "claudespace.claude.sessions"
     "claudespace.claude.dashboard"
