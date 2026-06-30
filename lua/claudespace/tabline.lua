@@ -41,7 +41,7 @@ local PIN_GLYPH = '▎'       -- accent bar marking pinned tabs (font-independen
 
 local TAB_MAXW  = 24                          -- truncate filenames beyond this width
 local RECENT_N  = 2                           -- this many MRU inactive tabs stay bright
-local SUPER     = { '¹', '²', '³', '⁴', '⁵' } -- quick-jump numbers (Alt+1..5)
+local SUPER     = { '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' } -- quick-jump numbers (<leader>1..9 / Alt+1..9)
 local CAP_L, CAP_R = '', ''                 -- rounded pill caps around the active tab
 
 -- Invalidate cache and schedule a tabline redraw.
@@ -1006,7 +1006,11 @@ function M.setup()
     if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf)
     else M.close_normal(buf) end
   end, { silent = true, desc = 'Close tab' })
-  for i = 1, 5 do
+  -- Jump to the n-th visible tab. <leader>N is terminal-proof; <A-N> is the
+  -- quick chord where the terminal forwards it.
+  for i = 1, 9 do
+    map('n', '<leader>' .. i, function() M.goto_n(i) end,
+      { silent = true, desc = 'Tab: go to ' .. i })
     map('n', '<A-' .. i .. '>', function() M.goto_n(i) end, { silent = true })
   end
 
