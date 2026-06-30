@@ -881,6 +881,42 @@ function M.close_all()
   invalidate()
 end
 
+-- Close every buffer in the current buffer's group (terminals are stopped;
+-- pinned / unsaved buffers are kept, like the other bulk-close ops).
+function M.close_group()
+  local cur = vim.api.nvim_get_current_buf()
+  local gid = buf_group[cur]
+  if not gid then
+    vim.notify('Current buffer is not in a group', vim.log.levels.WARN); return
+  end
+  local name = (groups[gid] and groups[gid].name) or '?'
+
+  -- Move the window onto a buffer outside this group before deleting.
+  local outside
+  for _, b in ipairs(visible_sorted_bufs()) do
+    if buf_group[b.bufnr] ~= gid then outside = b.bufnr; break end
+  end
+  if outside then vim.api.nvim_set_current_buf(outside) else vim.cmd 'enew' end
+
+  local closed, kept = 0, 0
+  for bn, g in pairs(vim.deepcopy(buf_group)) do
+    if g == gid and vim.api.nvim_buf_is_valid(bn) then
+      if vim.bo[bn].buftype == 'terminal' then
+        M.close_terminal(bn); closed = closed + 1
+      elseif safe_delete(bn) then
+        closed = closed + 1
+      else
+        kept = kept + 1
+      end
+    end
+  end
+  if kept == 0 and groups[gid] then groups[gid] = nil end
+  invalidate()
+  vim.notify(('Closed group "%s" — %d closed%s'):format(
+    name, closed, kept > 0 and (', ' .. kept .. ' kept (unsaved/pinned)') or ''),
+    vim.log.levels.INFO)
+end
+
 -- ── Navigation ────────────────────────────────────────────────────────────────
 
 -- Switch current window to a normal (non-fixed, non-special) buffer.
@@ -1140,6 +1176,7 @@ function M.setup()
     local buf = vim.api.nvim_get_current_buf()
     if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf) else M.close_normal(buf) end
   end, { silent = true, desc = 'Tab: close current' })
+  map('n', '<leader>tq', M.close_group,  { silent = true, desc = 'Tab: close group (all its buffers)' })
   map('n', '<leader>to', M.close_others, { silent = true, desc = 'Tab: close others' })
   map('n', '<leader>th', M.close_left,   { silent = true, desc = 'Tab: close to the left' })
   map('n', '<leader>tl', M.close_right,  { silent = true, desc = 'Tab: close to the right' })
