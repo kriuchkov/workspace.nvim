@@ -35,6 +35,10 @@ function M.render()
     end
   end
 
+  -- Clickable button: list this file's functions & structures (also <leader>fs)
+  local sym_btn = name ~= ''
+    and ('%@v:lua.CSSymbolsPick@%#CSWinbarSym#  󰊕 %X%#CSWinbarFile#') or ''
+
   -- Symbol context (right, via nvim-navic)
   local navic_part = ''
   local ok_nav, navic = pcall(require, 'nvim-navic')
@@ -45,13 +49,14 @@ function M.render()
     end
   end
 
-  return ws_part .. path_part .. navic_part
+  return ws_part .. path_part .. sym_btn .. navic_part
 end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
   hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#13151f' })
   hi(0, 'CSWinbarFile', { fg = '#a9b1d6', bg = '#13151f', bold = true })
+  hi(0, 'CSWinbarSym',  { fg = '#7dcfff', bg = '#13151f' })
   hi(0, 'CSWinbarNav',  { fg = '#7aa2f7', bg = '#13151f' })
   hi(0, 'CSWinbarWs',       { fg = '#7dcfff', bg = '#13151f', bold = true })
   hi(0, 'CSWinbarWsBranch', { fg = '#9ece6a', bg = '#13151f' })

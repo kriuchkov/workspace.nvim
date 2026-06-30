@@ -974,20 +974,6 @@ function M.goto_group_buf(g, b)
   end
 end
 
--- Alt+<group> chord: read the next digit as the buffer within that group.
--- A non-digit just focuses the group's MRU buffer (and is replayed).
-function M.goto_group_chord(g)
-  if not ordered_groups()[g] then return end
-  local ok, ch = pcall(vim.fn.getcharstr)
-  local d = ok and tonumber(ch)
-  if d and d >= 1 and d <= 9 then
-    M.goto_group_buf(g, d)
-  else
-    M.goto_group(g)
-    if ok and ch and ch ~= '' then vim.api.nvim_feedkeys(ch, 'n', false) end
-  end
-end
-
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
@@ -1068,14 +1054,26 @@ function M.setup()
     if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf)
     else M.close_normal(buf) end
   end, { silent = true, desc = 'Close tab' })
-  -- <leader>N → jump to group N. <A-N> → group N, then the next digit picks the
-  -- buffer within it (Alt+1 then 2 = group 1, buffer 2); a non-digit just lands
-  -- on the group.
-  for i = 1, 9 do
-    map('n', '<leader>' .. i, function() M.goto_group(i) end,
-      { silent = true, desc = 'Tab: go to group ' .. i })
-    map('n', '<A-' .. i .. '>', function() M.goto_group_chord(i) end,
-      { silent = true, desc = 'Tab: group ' .. i .. ' + buffer digit' })
+  -- Two-digit quick-jump on the native mapping timeout (terminal-proof, unlike
+  -- Alt which many terminals send as Esc+digit):
+  --   <leader>G   → group G            (fires after timeoutlen if no 2nd digit)
+  --   <leader>GB  → group G, buffer B  (e.g. <leader>12 = group 1, buffer 2)
+  for g = 1, 9 do
+    map('n', '<leader>' .. g, function() M.goto_group(g) end,
+      { silent = true, desc = 'Tab: group ' .. g })
+    for b = 1, 9 do
+      map('n', '<leader>' .. g .. b, function() M.goto_group_buf(g, b) end,
+        { silent = true })
+    end
+  end
+  -- Keep the 81 two-digit buffer maps out of the which-key popup (clutter).
+  local ok_wk, wk = pcall(require, 'which-key')
+  if ok_wk and wk.add then
+    local spec = {}
+    for g = 1, 9 do
+      for b = 1, 9 do spec[#spec + 1] = { '<leader>' .. g .. b, hidden = true } end
+    end
+    wk.add(spec)
   end
 
   -- Group keymaps
