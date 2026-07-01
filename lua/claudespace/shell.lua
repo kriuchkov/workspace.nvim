@@ -12,14 +12,14 @@ local M = {}
 
 local api = vim.api
 
--- A window is "center" when it is a real content window: not a float (the bars),
--- not a winfixwidth side panel, and not one of our cs_* panels. A Claude terminal
--- window counts as center so switching sessions reuses it.
+-- A window is "center" when it holds replaceable content: not a float (the bars)
+-- and not a winfixwidth side panel. Full-window start screens (home/dirdash) and
+-- Claude terminals count as center, so opening a file/tab replaces them.
 function M.is_center(win)
   if not (win and api.nvim_win_is_valid(win)) then return false end
   if api.nvim_win_get_config(win).relative ~= '' then return false end  -- float / bar
   if vim.wo[win].winfixwidth then return false end                       -- left/right bar
-  return vim.bo[api.nvim_win_get_buf(win)].filetype:match('^cs_') == nil
+  return true
 end
 
 -- Return the center window, creating one if the layout has none (only bars open).
