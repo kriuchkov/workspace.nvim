@@ -67,6 +67,40 @@ local function claude_cmd(flag)
   return "zsh -i -c 'claude" .. (flag or '') .. "'"
 end
 
+-- Claude stores each conversation as ~/.claude/projects/<enc-cwd>/<uuid>.jsonl,
+-- where enc-cwd is the absolute path with '/' and '.' replaced by '-'.
+local function project_dir(cwd)
+  return fn.expand('~/.claude/projects/') .. (cwd:gsub('[/.]', '-'))
+end
+
+-- Conversation UUIDs for a cwd, newest-first.
+local function session_ids(cwd)
+  local files = fn.glob(project_dir(cwd) .. '/*.jsonl', true, true)
+  table.sort(files, function(a, b) return fn.getftime(a) > fn.getftime(b) end)
+  return vim.tbl_map(function(f) return fn.fnamemodify(f, ':t:r') end, files)
+end
+
+-- Ids already bound to a live session (so siblings in the same cwd don't collide).
+local function claimed_ids()
+  local set = {}
+  for _, s in pairs(sessions) do if s.claude_id then set[s.claude_id] = true end end
+  return set
+end
+
+-- Claude writes the conversation file a moment after launch. Grab the newest id
+-- for this cwd that no other session has claimed, so we can --resume the *exact*
+-- conversation on workspace restore instead of --continue (which would point
+-- every same-cwd session at the single latest one).
+local function capture_id(sess)
+  vim.defer_fn(function()
+    if not sessions[sess.id] or sess.claude_id then return end
+    local claimed = claimed_ids()
+    for _, uuid in ipairs(session_ids(sess.cwd)) do
+      if not claimed[uuid] then sess.claude_id = uuid; return end
+    end
+  end, 3000)
+end
+
 local ensure_editor_win = require('claudespace.claude.util').ensure_editor_win
 
 -- Delete buf if it's a listed empty [No Name] buffer (cleanup after M.new replaces it).
@@ -111,6 +145,7 @@ function M.new(cwd, flag)
   local job_id = fn.termopen(claude_cmd(flag), { cwd = cwd })
   sess.bufnr  = buf
   sess.job_id = job_id
+  capture_id(sess)
 
   -- Inject workspace context once claude CLI has booted (~2.5s)
   vim.defer_fn(function()
@@ -321,13 +356,13 @@ end
 ---Returns a snapshot of current sessions for workspace persistence.
 function M.get_persistence_data()
   return vim.tbl_map(function(s)
-    return { name = s.name, cwd = s.cwd }
+    return { name = s.name, cwd = s.cwd, claude_id = s.claude_id }
   end, ordered())
 end
 
 ---Start a session in a background buffer (no visible window).
 ---termopen() requires a window, so we briefly open a 1-line split then close it.
-local function start_background(sess)
+local function start_background(sess, flag)
   local orig_win = api.nvim_get_current_win()
   local buf = api.nvim_create_buf(true, false)
   vim.b[buf].cs_session_id = sess.id
@@ -342,7 +377,7 @@ local function start_background(sess)
     relative = 'editor', width = 80, height = 24,
     row = 0, col = 0, focusable = false, style = 'minimal', noautocmd = true,
   })
-  fn.termopen(claude_cmd(' --continue'), { cwd = sess.cwd })  -- resume on workspace restore
+  fn.termopen(claude_cmd(flag or ' --continue'), { cwd = sess.cwd })
   -- Close the float — process keeps running in the buffer
   pcall(api.nvim_win_close, tmp_win, true)
   pcall(api.nvim_set_current_win, orig_win)
@@ -364,14 +399,34 @@ end
 ---@param data table  list of {name, cwd}
 function M.restore(data)
   if not data or #data == 0 then return end
+  -- Resume each session on its *own* conversation. Prefer the stored claude_id;
+  -- otherwise fall back to the recent on-disk conversations for that cwd, handing
+  -- each same-cwd session a distinct one so they don't all collapse onto --continue.
+  local pool = {}   -- cwd -> list of available uuids (newest-first)
+  local used = {}
+  for _, entry in ipairs(data) do
+    if entry.claude_id then used[entry.claude_id] = true end
+  end
+  local function next_uuid(cwd)
+    if pool[cwd] == nil then pool[cwd] = session_ids(cwd) end
+    for i, uuid in ipairs(pool[cwd]) do
+      if not used[uuid] then
+        used[uuid] = true
+        table.remove(pool[cwd], i)
+        return uuid
+      end
+    end
+  end
+
   for _, entry in ipairs(data) do
     if entry.cwd and entry.name then
       local id   = next_id; next_id = next_id + 1
-      local sess = { id = id, name = entry.name, cwd = entry.cwd }
+      local uuid = entry.claude_id or next_uuid(entry.cwd)
+      local sess = { id = id, name = entry.name, cwd = entry.cwd, claude_id = uuid }
       sessions[id] = sess
       table.insert(order, id)
       if not active_id then active_id = id end
-      start_background(sess)
+      start_background(sess, uuid and (' --resume ' .. uuid) or ' --continue')
     end
   end
   vim.notify(
