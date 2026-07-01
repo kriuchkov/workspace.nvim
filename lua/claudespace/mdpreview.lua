@@ -8,6 +8,15 @@ local ns  = api.nvim_create_namespace('cs_mdpreview')
 
 local HEAD_ICON = { '󰉫 ', '󰉬 ', '󰉭 ', '󰉮 ', '󰉯 ', '󰉰 ' }
 
+-- Fold level per line for <details> bodies (v:lua.CSMdFold foldexpr reads it).
+local fold_levels = {}   -- bufnr -> { [lnum] = level string }
+local has_details  = {}  -- bufnr -> bool
+
+function _G.CSMdFold()
+  local t = fold_levels[api.nvim_get_current_buf()]
+  return (t and t[vim.v.lnum]) or '0'
+end
+
 local function setup_highlights()
   local hi = api.nvim_set_hl
   hi(0, 'CSMdH1', { fg = '#7aa2f7', bold = true })
@@ -55,6 +64,16 @@ local function inline(buf, row, line)
     mark(buf, row, s + 1, e - 2, { hl_group = 'CSMdBold' })
     init = e + 1
   end
+  -- HTML bold <b>text</b>
+  init = 1
+  while true do
+    local s, e = line:find('<b>(.-)</b>', init)
+    if not s then break end
+    mark(buf, row, s - 1, s - 1 + 3, { conceal = '' })   -- <b>
+    mark(buf, row, e - 4, e, { conceal = '' })           -- </b>
+    mark(buf, row, s - 1 + 3, e - 4, { hl_group = 'CSMdBold' })
+    init = e + 1
+  end
   -- italic *text* or _text_
   for _, pat in ipairs { '%f[%*]%*([^%*\n]+)%*%f[^%*]', '%f[_]_([^_\n]+)_%f[^_]' } do
     init = 1
@@ -76,9 +95,13 @@ local function render(buf)
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   local lines = api.nvim_buf_get_lines(buf, 0, -1, false)
   local in_code = false
+  local in_details = false
+  local levels = {}       -- lnum -> fold level string
+  has_details[buf] = false
 
   for i, line in ipairs(lines) do
     local row = i - 1
+    levels[i] = in_details and '1' or '0'   -- body of <details> folds at level 1
 
     -- fenced code block boundaries + body
     if line:match('^%s*```') then
@@ -89,6 +112,37 @@ local function render(buf)
     end
     if in_code then
       api.nvim_buf_set_extmark(buf, ns, row, 0, { line_hl_group = 'CSMdCodeBg' })
+      goto cont
+    end
+
+    -- <details> / </details>: hide the tag; the body between summary and
+    -- </details> becomes a fold (collapsible like on GitHub).
+    if line:match('^%s*<details>%s*$') then
+      has_details[buf] = true
+      levels[i] = '0'
+      mark(buf, row, 0, #line, { conceal = '' })
+      goto cont
+    end
+    if line:match('^%s*</details>%s*$') then
+      levels[i] = in_details and '1' or '0'
+      in_details = false
+      mark(buf, row, 0, #line, { conceal = '' })
+      goto cont
+    end
+    -- <summary>...</summary>: disclosure marker, hidden tags, bold inner
+    local sinner = line:match('^%s*<summary>(.-)</summary>%s*$')
+    if sinner then
+      in_details = true
+      levels[i] = '0'   -- summary stays visible above the fold
+      local lead = #(line:match('^%s*'))
+      local so = line:find('<summary>', 1, true)
+      local eo = line:find('</summary>', 1, true)
+      mark(buf, row, so - 1, so - 1 + #'<summary>', { conceal = '' })
+      mark(buf, row, eo - 1, eo - 1 + #'</summary>', { conceal = '' })
+      api.nvim_buf_set_extmark(buf, ns, row, lead, {
+        virt_text = { { '▸ ', 'CSMdBullet' } }, virt_text_pos = 'inline',
+      })
+      inline(buf, row, line)   -- render <b>..</b> inside
       goto cont
     end
 
@@ -134,11 +188,29 @@ local function render(buf)
     inline(buf, row, line)
     ::cont::
   end
+
+  fold_levels[buf] = levels
 end
 
 -- ── Enable / disable / toggle ─────────────────────────────────────────────────
 
 local enabled = {}   -- bufnr -> true
+local saved   = {}   -- bufnr -> { fm, fe } saved fold settings
+
+-- Turn <details> bodies into folds via a scoped foldexpr (restored on disable).
+local function apply_folds(buf)
+  if has_details[buf] then
+    if not saved[buf] then   -- set once; fold_levels updates keep it fresh
+      saved[buf] = { fm = vim.wo.foldmethod, fe = vim.wo.foldexpr }
+      vim.wo.foldmethod = 'expr'
+      vim.wo.foldexpr   = 'v:lua.CSMdFold()'
+    end
+  elseif saved[buf] then
+    vim.wo.foldmethod = saved[buf].fm
+    vim.wo.foldexpr   = saved[buf].fe
+    saved[buf] = nil
+  end
+end
 
 local function set_conceal(on)
   if on then
@@ -154,6 +226,7 @@ function M.enable(buf)
   enabled[buf] = true
   set_conceal(true)
   render(buf)
+  apply_folds(buf)
 end
 
 function M.disable(buf)
@@ -161,6 +234,8 @@ function M.disable(buf)
   enabled[buf] = nil
   api.nvim_buf_clear_namespace(buf, ns, 0, -1)
   set_conceal(false)
+  has_details[buf] = false
+  apply_folds(buf)   -- restores foldmethod
 end
 
 function M.toggle(buf)
@@ -188,7 +263,7 @@ function M.setup()
       if not enabled[a.buf] then return end
       if timer then timer:stop() end
       timer = vim.defer_fn(function()
-        if enabled[a.buf] then render(a.buf) end
+        if enabled[a.buf] then render(a.buf); apply_folds(a.buf) end
       end, 150)
     end,
   })
