@@ -410,6 +410,110 @@ function M.goto_heading(dir)
   if target then api.nvim_win_set_cursor(0, { target, 0 }); vim.cmd 'normal! zz' end
 end
 
+-- ── Link navigation ───────────────────────────────────────────────────────────
+
+-- Every [text](target) link in the buffer, in document order. s/e are 1-based
+-- byte columns of '[' and ')'.
+local function links(buf)
+  local out = {}
+  for i, l in ipairs(api.nvim_buf_get_lines(buf, 0, -1, false)) do
+    local init = 1
+    while true do
+      local s, e, text, target = l:find('%[([^%]\n]+)%]%(([^%)\n]+)%)', init)
+      if not s then break end
+      out[#out + 1] = { lnum = i, s = s, e = e, text = text, target = target }
+      init = e + 1
+    end
+  end
+  return out
+end
+
+local function slugify(text)
+  return text:lower():gsub('[^%w%s-]', ''):gsub('%s+', '-')
+end
+
+-- Jump the cursor to the next/prev link (wraps around).
+function M.goto_link(dir)
+  local buf = api.nvim_get_current_buf()
+  local ls  = links(buf)
+  if #ls == 0 then vim.notify('No links in this file', vim.log.levels.INFO); return end
+  local pos = api.nvim_win_get_cursor(0)
+  local row, col = pos[1], pos[2] + 1
+  local target
+  if dir > 0 then
+    for _, lk in ipairs(ls) do
+      if lk.lnum > row or (lk.lnum == row and lk.s > col) then target = lk; break end
+    end
+    target = target or ls[1]
+  else
+    for i = #ls, 1, -1 do
+      local lk = ls[i]
+      if lk.lnum < row or (lk.lnum == row and lk.s < col) then target = lk; break end
+    end
+    target = target or ls[#ls]
+  end
+  api.nvim_win_set_cursor(0, { target.lnum, target.s })   -- land on the visible text
+  vim.cmd 'normal! zz'
+end
+
+-- Resolve a link target: #anchor → heading jump, URL → browser, else a file path
+-- (relative to the buffer's dir) opened in the center window (reused if loaded).
+function M.open_target(target, buf)
+  if target:match('^#') then
+    local slug = slugify(target:gsub('^#', ''))
+    for _, h in ipairs(headings(buf)) do
+      if slugify(h.text) == slug then
+        api.nvim_win_set_cursor(0, { h.lnum, 0 }); vim.cmd 'normal! zz'; return
+      end
+    end
+    vim.notify('No heading: ' .. target, vim.log.levels.WARN); return
+  end
+
+  if target:match('^%a[%w+.-]*://') or target:match('^mailto:') or target:match('^www%.') then
+    local url = target:match('^www%.') and ('https://' .. target) or target
+    local ok = pcall(vim.ui.open, url)
+    if not ok then fn.jobstart({ 'open', url }) end
+    return
+  end
+
+  local path, anchor = target:match('^([^#]*)#?(.*)$')
+  if not path or path == '' then return end
+  if not path:match('^/') then
+    path = fn.fnamemodify(api.nvim_buf_get_name(buf), ':h') .. '/' .. path
+  end
+  path = fn.fnamemodify(path, ':p')
+  if fn.filereadable(path) == 0 and fn.isdirectory(path) == 0
+     and fn.filereadable(path .. '.md') == 1 then
+    path = path .. '.md'
+  end
+  if fn.filereadable(path) == 0 and fn.isdirectory(path) == 0 then
+    vim.notify('Not found: ' .. path, vim.log.levels.WARN); return
+  end
+
+  local ok, shell = pcall(require, 'claudespace.shell')
+  if ok then pcall(api.nvim_set_current_win, shell.center()) end
+  vim.cmd('edit ' .. fn.fnameescape(path))
+  if anchor and anchor ~= '' then
+    M.open_target('#' .. anchor, api.nvim_get_current_buf())
+  end
+end
+
+-- Follow the link under the cursor (or the next one on the line).
+function M.follow_link()
+  local buf = api.nvim_get_current_buf()
+  local pos = api.nvim_win_get_cursor(0)
+  local row, col = pos[1], pos[2] + 1
+  local best
+  for _, lk in ipairs(links(buf)) do
+    if lk.lnum == row then
+      if col >= lk.s and col <= lk.e then best = lk; break end
+      if not best and lk.s >= col then best = lk end
+    end
+  end
+  if not best then vim.notify('No link under cursor', vim.log.levels.INFO); return end
+  M.open_target(best.target, buf)
+end
+
 function M.toc()
   local hs = headings(api.nvim_get_current_buf())
   if #hs == 0 then vim.notify('No headings in this file', vim.log.levels.INFO); return end
@@ -523,6 +627,14 @@ function M.setup()
         vim.tbl_extend('force', o, { desc = 'Markdown: focus current section' }))
       vim.keymap.set('n', 'yc', M.yank_code,
         vim.tbl_extend('force', o, { desc = 'Yank code block' }))
+      vim.keymap.set('n', ']l', function() M.goto_link(1) end,
+        vim.tbl_extend('force', o, { desc = 'Next link' }))
+      vim.keymap.set('n', '[l', function() M.goto_link(-1) end,
+        vim.tbl_extend('force', o, { desc = 'Prev link' }))
+      vim.keymap.set('n', '<CR>', M.follow_link,
+        vim.tbl_extend('force', o, { desc = 'Follow link' }))
+      vim.keymap.set('n', 'gx', M.follow_link,
+        vim.tbl_extend('force', o, { desc = 'Follow link (url/file)' }))
     end,
   })
   api.nvim_create_autocmd({ 'TextChanged', 'TextChangedI', 'InsertLeave' }, {
