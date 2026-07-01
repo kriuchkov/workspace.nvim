@@ -4,7 +4,7 @@ local M = {}
 local api = vim.api
 local fn  = vim.fn
 
-local SKIP_FT = { cs_filetree = true, cs_dirdash = true, cs_outline = true }
+local SKIP_FT = { cs_filetree = true, cs_dirdash = true, cs_outline = true, cs_mdtoc = true }
 local SKIP_BT = { terminal = true, nofile = true, prompt = true, quickfix = true }
 
 local function skip(win)

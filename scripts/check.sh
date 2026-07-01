@@ -43,6 +43,7 @@ else
     "claudespace.gotofile"
     "claudespace.mdpreview"
     "claudespace.zen"
+    "claudespace.mdtoc"
     "claudespace.claude.util"
     "claudespace.claude.sessions"
     "claudespace.claude.dashboard"

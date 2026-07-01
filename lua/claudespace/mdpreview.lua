@@ -441,8 +441,6 @@ function M.setup()
         vim.tbl_extend('force', o, { desc = 'Next heading' }))
       vim.keymap.set('n', '[[', function() M.goto_heading(-1) end,
         vim.tbl_extend('force', o, { desc = 'Prev heading' }))
-      vim.keymap.set('n', '<leader>mt', M.toc,
-        vim.tbl_extend('force', o, { desc = 'Markdown: table of contents' }))
       vim.keymap.set('n', '<leader>mf', function() M.focus_toggle(a.buf) end,
         vim.tbl_extend('force', o, { desc = 'Markdown: focus current section' }))
       vim.keymap.set('n', 'yc', M.yank_code,
