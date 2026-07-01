@@ -40,6 +40,7 @@ local function setup_highlights()
   hi(0, 'CSMdTip',     { fg = '#9ece6a', bold = true })
   hi(0, 'CSMdWarn',    { fg = '#e0af68', bold = true })
   hi(0, 'CSMdCaution', { fg = '#f7768e', bold = true })
+  hi(0, 'CSMdTablePipe', { fg = '#3d59a1' })
 end
 
 -- GitHub callouts: > [!NOTE] etc.
@@ -216,6 +217,32 @@ local function render(buf)
         virt_text = { { c.icon .. ckind, c.hl } }, virt_text_pos = 'inline',
         line_hl_group = c.hl,
       })
+      goto cont
+    end
+
+    -- table rows: | a | b |  → box pipes, header bold, separator as a border
+    if line:match('^%s*|.*|%s*$') then
+      if line:match('^%s*|[%s%-:|]+|%s*$') then
+        local bord = (line:gsub('[^|]', '─'):gsub('|', '┼'))
+        mark(buf, row, 0, #line, { conceal = '' })
+        api.nvim_buf_set_extmark(buf, ns, row, 0, {
+          virt_text = { { bord, 'CSMdTablePipe' } }, virt_text_pos = 'overlay',
+        })
+        goto cont
+      end
+      local is_header = lines[i + 1] and lines[i + 1]:match('^%s*|[%s%-:|]+|%s*$')
+      if is_header then mark(buf, row, 0, #line, { hl_group = 'CSMdBold' }) end
+      local col = 1
+      while true do
+        local p = line:find('|', col, true)
+        if not p then break end
+        mark(buf, row, p - 1, p, { conceal = '' })
+        api.nvim_buf_set_extmark(buf, ns, row, p - 1, {
+          virt_text = { { '│', 'CSMdTablePipe' } }, virt_text_pos = 'inline',
+        })
+        col = p + 1
+      end
+      inline(buf, row, line)
       goto cont
     end
 
