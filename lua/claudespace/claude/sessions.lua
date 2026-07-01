@@ -170,6 +170,12 @@ function M.toggle()
   M.open((sessions[active_id] or list[1]).id)
 end
 
+---Jump to the n-th Claude session (matches the numbers in the bottom bar).
+function M.goto_index(n)
+  local list = ordered()
+  if list[n] then M.open(list[n].id) end
+end
+
 ---New session resuming the most recent conversation in the (active) repo.
 function M.continue(cwd) M.new(cwd, ' --continue') end
 
@@ -416,29 +422,41 @@ function M.setup()
   -- Keymaps
   local map = vim.keymap.set
 
-  map({ 'n', 't' }, '<leader>cc', M.toggle,
+  map('n', '<leader>cc', M.toggle,
     { desc = 'Claude: open/toggle', silent = true })
 
-  map({ 'n', 't' }, '<leader>cn', function() M.new() end,
+  map('n', '<leader>cn', function() M.new() end,
     { desc = 'Claude: new session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cu', function() M.resume() end,
+  map('n', '<leader>cu', function() M.resume() end,
     { desc = 'Claude: resume past session (--resume)', silent = true })
 
   api.nvim_create_user_command('ClaudeResume',   function() M.resume() end,   { desc = 'Resume a past Claude session' })
   api.nvim_create_user_command('ClaudeContinue', function() M.continue() end, { desc = 'Continue the most recent Claude conversation' })
 
-  map({ 'n', 't' }, '<leader>ch', M.prev,
+  map('n', '<leader>ch', M.prev,
     { desc = 'Claude: prev session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cl', M.next,
+  map('n', '<leader>cl', M.next,
     { desc = 'Claude: next session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cs', M.pick,
+  map('n', '<leader>cs', M.pick,
     { desc = 'Claude: pick session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cR', M.rename_current,
+  map('n', '<leader>cR', M.rename_current,
     { desc = 'Claude: rename session', silent = true })
+
+  -- Numeric quick-jump to bottom-bar session N (¹²³ …), hidden from which-key.
+  -- Works from a Claude terminal too ({n,t}, matching the other session keys).
+  for i = 1, 9 do
+    map('n', '<leader>c' .. i, function() M.goto_index(i) end, { silent = true })
+  end
+  local ok_wk, wk = pcall(require, 'which-key')
+  if ok_wk and wk.add then
+    local spec = {}
+    for i = 1, 9 do spec[#spec + 1] = { '<leader>c' .. i, hidden = true } end
+    wk.add(spec)
+  end
 end
 
 -- ── Test exports ──────────────────────────────────────────────────────────────

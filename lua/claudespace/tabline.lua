@@ -1104,18 +1104,19 @@ function M.setup()
   vim.o.tabline = '%!v:lua.require("claudespace.tabline").render()'
 
   local map = vim.keymap.set
-  map('n', '<A-,>', M.prev, { silent = true, desc = 'Prev tab' })
-  map('n', '<A-.>', M.next, { silent = true, desc = 'Next tab' })
-  map('n', '<A-c>', function() M.close() end, { silent = true, desc = 'Close tab' })
-  -- Two-digit quick-jump on the native mapping timeout (terminal-proof, unlike
-  -- Alt which many terminals send as Esc+digit):
+  -- Alt keys are terminal-safe ({n,t}) — they aren't typed text. Leader keys stay
+  -- normal-mode only: <leader> is <Space>, and mapping it in a terminal would add
+  -- timeout latency to every space typed into Claude (use <Esc><Esc> there).
+  local NT = { 'n', 't' }
+  map(NT, '<A-,>', M.prev, { silent = true, desc = 'Prev tab' })
+  map(NT, '<A-.>', M.next, { silent = true, desc = 'Next tab' })
+  map(NT, '<A-c>', function() M.close() end, { silent = true, desc = 'Close tab' })
   --   <leader>G   → group G            (fires after timeoutlen if no 2nd digit)
   --   <leader>GB  → group G, buffer B  (e.g. <leader>12 = group 1, buffer 2)
   for g = 1, 9 do
     map('n', '<leader>' .. g, function() M.goto_group(g) end,
       { silent = true, desc = 'Tab: group ' .. g })
-    -- <A-N> jumps to the n-th buffer in the current group (the visible numbers).
-    map('n', '<A-' .. g .. '>', function() M.goto_buf_n(g) end, { silent = true })
+    map(NT, '<A-' .. g .. '>', function() M.goto_buf_n(g) end, { silent = true })
     for b = 1, 9 do
       map('n', '<leader>' .. g .. b, function() M.goto_group_buf(g, b) end,
         { silent = true })
