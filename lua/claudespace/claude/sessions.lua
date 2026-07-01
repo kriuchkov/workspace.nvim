@@ -49,6 +49,18 @@ end
 -- not the top tabline — no grouping needed.
 local function group_claude(_) end
 
+local shell = require('claudespace.shell')
+
+-- Open `buf` in the single center window and collapse any duplicate Claude panes.
+local function open_center(buf)
+  local win = shell.open(buf)
+  shell.consolidate(win, function(w)
+    local b = api.nvim_win_get_buf(w)
+    return vim.b[b] and vim.b[b].cs_session_id ~= nil
+  end)
+  return win
+end
+
 -- Build the launch command. flag '' = fresh chat, ' --continue' = resume the
 -- most recent conversation in the cwd, ' --resume' = pick from past sessions.
 local function claude_cmd(flag)
@@ -78,7 +90,6 @@ local function session_repo(s)
 end
 
 function M.new(cwd, flag)
-  ensure_editor_win()
   if not cwd then
     -- Start in the active repo so Claude picks up that repo's CLAUDE.md cascade.
     local ok, repos = pcall(require, 'claudespace.repos')
@@ -92,11 +103,11 @@ function M.new(cwd, flag)
   table.insert(order, id)
   active_id = id
 
-  local prev_buf = api.nvim_win_get_buf(0)
+  local win = shell.center()
+  local prev_buf = api.nvim_win_get_buf(win)
   local buf = api.nvim_create_buf(true, false)
   vim.b[buf].cs_session_id = id
-  group_claude(buf)
-  api.nvim_win_set_buf(0, buf)
+  open_center(buf)
   local job_id = fn.termopen(claude_cmd(flag), { cwd = cwd })
   sess.bufnr  = buf
   sess.job_id = job_id
@@ -128,16 +139,14 @@ end
 ---@param id number
 function M.open(id)
   local sess = sessions[id]; if not sess then return end
-  ensure_editor_win()
   local buf  = live_buf(id)
   if buf then
-    api.nvim_win_set_buf(0, buf)
+    open_center(buf)
   else
     -- process died but session entry survived — restart
     buf = api.nvim_create_buf(true, false)
     vim.b[buf].cs_session_id = id
-    group_claude(buf)
-    api.nvim_win_set_buf(0, buf)
+    open_center(buf)
     fn.termopen(claude_cmd(' --continue'), { cwd = sess.cwd })  -- resume the conversation
     sess.bufnr = buf
     vim.schedule(function()

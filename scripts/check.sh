@@ -39,6 +39,7 @@ else
     "claudespace.options"
     "claudespace.keymaps"
     "claudespace.health"
+    "claudespace.shell"
     "claudespace.repos"
     "claudespace.gotofile"
     "claudespace.mdpreview"

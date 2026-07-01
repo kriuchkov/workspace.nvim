@@ -918,31 +918,11 @@ end
 
 -- ── Navigation ────────────────────────────────────────────────────────────────
 
--- Switch current window to a normal (non-fixed, non-special) buffer. Never
--- throws: validates the target and only sets it in a suitable editor window
--- (so a click while focus is in the tree/a winfixbuf window can't E1513).
+-- Open a buffer in the center content window (never splits, never throws): a
+-- click while focus is in the tree/a bar can't E1513 — the shell routes it.
 function set_buf_safe(bufnr)
   if not (bufnr and vim.api.nvim_buf_is_valid(bufnr)) then return end
-  local function ok_win(win)
-    if not vim.api.nvim_win_is_valid(win) then return false end
-    local b = vim.api.nvim_win_get_buf(win)
-    return not vim.wo[win].winfixbuf
-        and vim.bo[b].buftype == ''
-        and not vim.bo[b].filetype:match('^cs_')
-  end
-  local cur = vim.api.nvim_get_current_win()
-  if not ok_win(cur) then
-    pcall(vim.cmd, 'wincmd p')
-    cur = vim.api.nvim_get_current_win()
-  end
-  if not ok_win(cur) then
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      if ok_win(w) then pcall(vim.api.nvim_set_current_win, w); cur = w; break end
-    end
-  end
-  if ok_win(cur) then
-    pcall(vim.api.nvim_set_current_buf, bufnr)
-  end
+  require('claudespace.shell').open(bufnr)
 end
 
 function M.prev()
