@@ -41,6 +41,7 @@ else
     "claudespace.health"
     "claudespace.repos"
     "claudespace.gotofile"
+    "claudespace.mdpreview"
     "claudespace.claude.util"
     "claudespace.claude.sessions"
     "claudespace.claude.dashboard"
