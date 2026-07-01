@@ -446,6 +446,11 @@ function M.setup()
   map('n', '<leader>cR', M.rename_current,
     { desc = 'Claude: rename session', silent = true })
 
+  -- Alt-based session cycling works from inside a Claude terminal too (unlike the
+  -- <leader> keys, which are <Space> and would clash with typing). <A-h>/<A-l>.
+  map({ 'n', 't' }, '<A-h>', M.prev, { silent = true, desc = 'Claude: prev session' })
+  map({ 'n', 't' }, '<A-l>', M.next, { silent = true, desc = 'Claude: next session' })
+
   -- Numeric quick-jump to bottom-bar session N (¹²³ …), hidden from which-key.
   -- Works from a Claude terminal too ({n,t}, matching the other session keys).
   for i = 1, 9 do
