@@ -1,6 +1,23 @@
 -- Shared helpers for Claude modules.
 local M = {}
 
+-- ── Window helpers ────────────────────────────────────────────────────────────
+
+local function special(win)
+  if not vim.api.nvim_win_is_valid(win) then return true end
+  local b = vim.api.nvim_win_get_buf(win)
+  return vim.wo[win].winfixbuf
+      or vim.bo[b].buftype ~= ''
+      or vim.bo[b].filetype:match('^cs_') ~= nil
+end
+
+-- Move focus to the center content window (creating one if needed). Delegates to
+-- the shell so every caller lands in the single center region.
+function M.ensure_editor_win()
+  local ok, shell = pcall(require, 'claudespace.shell')
+  if ok then pcall(vim.api.nvim_set_current_win, shell.center()) end
+end
+
 -- ── Spinner ───────────────────────────────────────────────────────────────────
 
 local FRAMES = { '⣾', '⣽', '⣻', '⢿', '⡿', '⣟', '⣯', '⣷' }
@@ -115,6 +132,8 @@ function M.read_float(lines, title, ft)
     title = title, title_pos = 'center',
   })
   vim.wo[win].wrap = true
+  vim.wo[win].linebreak = true   -- wrap at word boundaries, not mid-word
+  vim.wo[win].breakindent = true
 
   local function close() pcall(vim.api.nvim_win_close, win, true) end
   for _, k in ipairs { 'q', '<Esc>', '<CR>' } do

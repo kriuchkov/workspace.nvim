@@ -7,6 +7,19 @@ function M.render()
   local buf  = api.nvim_get_current_buf()
   local name = api.nvim_buf_get_name(buf)
 
+  -- Workspace / active-repo segment (left, multi-repo only)
+  local ws_part = ''
+  local ok_repos, repos = pcall(require, 'claudespace.repos')
+  if ok_repos and repos.is_multi() then
+    local m = repos.active()
+    if m then
+      local st     = repos.status(m)
+      local branch = (st and st.branch ~= '') and ('%#CSWinbarWsBranch# ' .. st.branch) or ''
+      local dirty  = (st and st.dirty > 0) and ('%#CSWinbarWsDirty# ●' .. st.dirty) or ''
+      ws_part = '%#CSWinbarWs# ' .. repos.name() .. ' › ' .. m.label .. branch .. dirty .. '%#CSWinbarDir#  '
+    end
+  end
+
   -- Path segment (left)
   local path_part
   if name == '' then
@@ -22,6 +35,10 @@ function M.render()
     end
   end
 
+  -- Clickable button: list this file's functions & structures (also <leader>fs)
+  local sym_btn = name ~= ''
+    and ('%@v:lua.CSSymbolsPick@%#CSWinbarSym#  󰊕 %X%#CSWinbarFile#') or ''
+
   -- Symbol context (right, via nvim-navic)
   local navic_part = ''
   local ok_nav, navic = pcall(require, 'nvim-navic')
@@ -32,19 +49,24 @@ function M.render()
     end
   end
 
-  return path_part .. navic_part
+  return ws_part .. path_part .. sym_btn .. navic_part
 end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
-  hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#13151f' })
-  hi(0, 'CSWinbarFile', { fg = '#a9b1d6', bg = '#13151f', bold = true })
-  hi(0, 'CSWinbarNav',  { fg = '#7aa2f7', bg = '#13151f' })
+  local c  = require('claudespace.theme').colors()
+  hi(0, 'CSWinbarDir',  { fg = c.fg_dim, bg = c.bg })
+  hi(0, 'CSWinbarFile', { fg = c.fg, bg = c.bg, bold = true })
+  hi(0, 'CSWinbarSym',  { fg = c.cyan, bg = c.bg })
+  hi(0, 'CSWinbarNav',  { fg = c.blue, bg = c.bg })
+  hi(0, 'CSWinbarWs',       { fg = c.cyan, bg = c.bg, bold = true })
+  hi(0, 'CSWinbarWsBranch', { fg = c.green, bg = c.bg })
+  hi(0, 'CSWinbarWsDirty',  { fg = c.warn, bg = c.bg })
 end
 
 local SKIP_FT = {
   cs_filetree = true, cs_dirdash = true, cs_outline = true,
-  cs_home = true, cs_notify = true, cs_gitui = true,
+  cs_home = true, cs_notify = true, cs_gitui = true, cs_mdtoc = true,
   TelescopePrompt = true, lazy = true, mason = true,
   help = true, trouble = true, dap_repl = true,
   ['dapui_watches'] = true, ['dapui_stacks'] = true,
@@ -54,7 +76,7 @@ local SKIP_BT = { terminal = true, nofile = true, prompt = true, quickfix = true
 
 function M.setup()
   setup_highlights()
-  api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
   api.nvim_create_autocmd({ 'BufWinEnter', 'WinEnter' }, {
     callback = function()
       if SKIP_FT[vim.bo.filetype] or SKIP_BT[vim.bo.buftype] then

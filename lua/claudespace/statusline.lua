@@ -140,31 +140,32 @@ end
 
 local function setup_highlights()
   local hi = vim.api.nvim_set_hl
-  -- Mode pills — colours from tokyonight palette, work on any dark theme
-  hi(0, 'CSModeN', { bg = '#7aa2f7', fg = '#1a1b26', bold = true })
-  hi(0, 'CSModeI', { bg = '#9ece6a', fg = '#1a1b26', bold = true })
-  hi(0, 'CSModeV', { bg = '#bb9af7', fg = '#1a1b26', bold = true })
-  hi(0, 'CSModeC', { bg = '#e0af68', fg = '#1a1b26', bold = true })
-  hi(0, 'CSModeR', { bg = '#f7768e', fg = '#1a1b26', bold = true })
-  hi(0, 'CSModeT', { bg = '#73daca', fg = '#1a1b26', bold = true })
+  local c  = require('claudespace.theme').colors()
+  -- Mode pills — coloured background, palette-bg text for contrast in both themes.
+  hi(0, 'CSModeN', { bg = c.blue,   fg = c.bg, bold = true })
+  hi(0, 'CSModeI', { bg = c.green,  fg = c.bg, bold = true })
+  hi(0, 'CSModeV', { bg = c.purple, fg = c.bg, bold = true })
+  hi(0, 'CSModeC', { bg = c.yellow, fg = c.bg, bold = true })
+  hi(0, 'CSModeR', { bg = c.red,    fg = c.bg, bold = true })
+  hi(0, 'CSModeT', { bg = c.cyan,   fg = c.bg, bold = true })
   -- Statusline segments
-  hi(0, 'CSGit',    { fg = '#e0af68' })
-  hi(0, 'CSFile',   { fg = '#c0caf5', bold = true })
-  hi(0, 'CSMod',    { fg = '#f7768e' })
-  hi(0, 'CSErr',    { fg = '#f7768e' })
-  hi(0, 'CSWarn',   { fg = '#e0af68' })
-  hi(0, 'CSWorkspace', { fg = '#bb9af7', bold = true })
-  hi(0, 'CSClaude', { fg = '#7aa2f7' })
-  hi(0, 'CSLsp',    { fg = '#73daca' })
-  hi(0, 'CSInfo',   { fg = '#565f89' })
-  hi(0, 'CSDebug',  { fg = '#ff9e64', bold = true })
+  hi(0, 'CSGit',    { fg = c.git_change })
+  hi(0, 'CSFile',   { fg = c.fg, bold = true })
+  hi(0, 'CSMod',    { fg = c.red })
+  hi(0, 'CSErr',    { fg = c.error })
+  hi(0, 'CSWarn',   { fg = c.warn })
+  hi(0, 'CSWorkspace', { fg = c.purple, bold = true })
+  hi(0, 'CSClaude', { fg = c.blue })
+  hi(0, 'CSLsp',    { fg = c.cyan })
+  hi(0, 'CSInfo',   { fg = c.fg_dim })
+  hi(0, 'CSDebug',  { fg = c.orange, bold = true })
 end
 
 function M.setup()
   setup_highlights()
   vim.o.statusline = '%!v:lua.require("claudespace.statusline").render()'
-  -- Re-apply after colorscheme changes
-  vim.api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  -- Re-tint when the theme (dark/light) is (re-)applied.
+  vim.api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
 end
 
 return M

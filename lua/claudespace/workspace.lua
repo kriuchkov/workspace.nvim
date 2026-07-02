@@ -91,10 +91,21 @@ function M.save(name, silent)
     claude_sessions = cs.get_persistence_data()
   end
 
+  -- Multi-repo workspace: record the workspace root and the active repo so the
+  -- context can be restored even before a file is focused.
+  local ws_root, active_repo
+  local ok_repos, repos = pcall(require, 'claudespace.repos')
+  if ok_repos then
+    ws_root = repos.root()
+    local ar = repos.active()
+    active_repo = ar and ar.path or nil
+  end
+
   local state = {
     name = name, cwd = fn.getcwd(), files = files, active = active,
     layout = layout, claude_session_id = claude_id,
     claude_sessions = claude_sessions,
+    root = ws_root, active_repo = active_repo,
   }
   local ok, json = pcall(fn.json_encode, state)
   if ok then
@@ -134,6 +145,10 @@ function M.load(name)
 
   -- Switch directory (triggers tabline DirChanged → loads that dir's groups)
   vim.cmd('cd ' .. fn.fnameescape(state.cwd))
+
+  -- Re-scan the workspace repos. DirChanged usually triggers this, but won't
+  -- fire when loading a workspace whose cwd equals the current one.
+  pcall(function() require('claudespace.repos').load() end)
 
   -- Restore files as background buffers
   for _, path in ipairs(state.files or {}) do
@@ -302,28 +317,35 @@ function M.setup()
     end)
   end, { desc = 'Workspace: delete' })
 
-  -- Per-workspace terminals: <leader>ww1 / ww2 / ww3
+  -- Per-workspace terminals: <leader>ww1 / ww2 / ww3.
+  -- All three share a single bottom window — switching slots swaps the buffer
+  -- in place instead of stacking new splits.
   for slot = 1, 3 do
     map('n', '<leader>ww' .. slot, function()
       local ws_name = M._current or M.current_name()
-      if not M._terminals[ws_name] then M._terminals[ws_name] = {} end
-      local buf = M._terminals[ws_name][slot]
-      -- Reuse if still valid
-      if buf and api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == 'terminal' then
-        for _, win in ipairs(api.nvim_list_wins()) do
-          if api.nvim_win_get_buf(win) == buf then
-            api.nvim_set_current_win(win); return
-          end
-        end
+      M._terminals[ws_name] = M._terminals[ws_name] or {}
+      local buf      = M._terminals[ws_name][slot]
+      local have_buf = buf and api.nvim_buf_is_valid(buf) and vim.bo[buf].buftype == 'terminal'
+
+      -- Ensure the single shared terminal window exists and is focused.
+      if M._term_win and api.nvim_win_is_valid(M._term_win) then
+        api.nvim_set_current_win(M._term_win)
+      else
         vim.cmd 'botright split'
-        api.nvim_set_current_buf(buf)
-        return
+        M._term_win = api.nvim_get_current_win()
+        api.nvim_win_set_height(M._term_win, math.floor(vim.o.lines * 0.28))
       end
-      -- Create new terminal in workspace cwd
-      local cwd = fn.getcwd()
-      vim.cmd('botright split | lcd ' .. fn.fnameescape(cwd) .. ' | terminal')
-      api.nvim_win_set_height(0, math.floor(vim.o.lines * 0.28))
-      M._terminals[ws_name][slot] = api.nvim_get_current_buf()
+
+      if have_buf then
+        api.nvim_win_set_buf(M._term_win, buf)
+      else
+        -- Create the terminal for this slot inside the shared window.
+        local newbuf = api.nvim_create_buf(true, false)
+        api.nvim_win_set_buf(M._term_win, newbuf)
+        fn.termopen(vim.o.shell, { cwd = fn.getcwd() })
+        M._terminals[ws_name][slot] = newbuf
+      end
+      vim.cmd 'startinsert'
     end, { desc = 'Workspace: terminal ' .. slot })
   end
 end

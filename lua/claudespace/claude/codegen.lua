@@ -35,7 +35,7 @@ local function inline_edit()
   end)
 end
 
-vim.keymap.set('v', '<leader>ce', inline_edit, { desc = 'Claude: edit selection' })
+vim.keymap.set('v', '<leader>cge', inline_edit, { desc = 'edit selection' })
 
 -- ── Generate at cursor ────────────────────────────────────────────────────────
 
@@ -107,20 +107,21 @@ local function generate_tests(lines, ft)
   end)
 end
 
-vim.keymap.set('n', '<leader>ct', function()
+vim.keymap.set('n', '<leader>cgt', function()
   generate_tests(vim.api.nvim_buf_get_lines(0, 0, -1, false), vim.bo.filetype)
-end, { desc = 'Claude: generate tests (file)' })
+end, { desc = 'tests (file)' })
 
-vim.keymap.set('v', '<leader>ct', function()
+vim.keymap.set('v', '<leader>cgt', function()
   local s, e = vim.fn.line "'<", vim.fn.line "'>"
   generate_tests(vim.api.nvim_buf_get_lines(0, s - 1, e, false), vim.bo.filetype)
-end, { desc = 'Claude: generate tests (selection)' })
+end, { desc = 'tests (selection)' })
 
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
-  vim.keymap.set('n', '<leader>cg', M.generate,
-    { desc = 'Claude: generate at cursor', silent = true })
+  vim.keymap.set('n', '<leader>cgc', M.generate, { desc = 'generate at cursor', silent = true })
+  local ok_wk, wk = pcall(require, 'which-key')
+  if ok_wk and wk.add then wk.add { { '<leader>cg', group = 'generate' } } end
 end
 
 return M

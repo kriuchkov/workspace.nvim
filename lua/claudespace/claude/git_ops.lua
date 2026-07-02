@@ -100,7 +100,8 @@ local function generate_pr()
   end)
 end
 
-vim.keymap.set('n', '<leader>gp', generate_pr, { desc = 'Claude: generate PR description' })
+-- <leader>cP (Claude namespace) — <leader>gp belongs to gitsigns (preview hunk).
+vim.keymap.set('n', '<leader>cgp', generate_pr, { desc = 'generate PR description' })
 
 -- ── Code review ───────────────────────────────────────────────────────────────
 
@@ -154,11 +155,11 @@ local function review(lines, ft, context)
   end)
 end
 
-vim.keymap.set('n', '<leader>cr', function()
+vim.keymap.set('n', '<leader>cgr', function()
   review(vim.api.nvim_buf_get_lines(0, 0, -1, false), vim.bo.filetype)
-end, { desc = 'Claude: review file' })
+end, { desc = 'review file' })
 
-vim.keymap.set('v', '<leader>cr', function()
+vim.keymap.set('v', '<leader>cgr', function()
   local s, e = vim.fn.line "'<", vim.fn.line "'>"
   review(vim.api.nvim_buf_get_lines(0, s - 1, e, false), vim.bo.filetype, 'lines ' .. s .. '-' .. e)
-end, { desc = 'Claude: review selection' })
+end, { desc = 'review selection' })

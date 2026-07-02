@@ -7,10 +7,15 @@ require 'claudespace.claude.sessions'
 
 -- CLAUDE.md management
 vim.keymap.set('n', '<leader>cm', function()
-  local project_md = vim.fn.getcwd() .. '/CLAUDE.md'
+  local repos = require('claudespace.repos')
+  local project_md = repos.active_cwd() .. '/CLAUDE.md'
+  -- In a multi-repo workspace, also offer the root CLAUDE.md as a fallback.
+  local root_md   = repos.is_multi() and (repos.root() .. '/CLAUDE.md') or nil
   local global_md = vim.fn.expand '~/.claude/CLAUDE.md'
   if vim.fn.filereadable(project_md) == 1 then
     vim.cmd('edit ' .. project_md)
+  elseif root_md and vim.fn.filereadable(root_md) == 1 then
+    vim.cmd('edit ' .. root_md)
   elseif vim.fn.filereadable(global_md) == 1 then
     vim.cmd('edit ' .. global_md)
   else

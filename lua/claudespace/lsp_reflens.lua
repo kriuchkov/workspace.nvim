@@ -346,6 +346,7 @@ function M.setup()
   reflens_hl()
   local grp = vim.api.nvim_create_augroup('cs_reflens', { clear = true })
   vim.api.nvim_create_autocmd('ColorScheme', { group = grp, callback = reflens_hl })
+  vim.api.nvim_create_autocmd('User', { group = grp, pattern = 'CSThemeApplied', callback = reflens_hl })
   vim.api.nvim_create_autocmd('CursorHold', { group = grp, callback = auto_show })
   vim.api.nvim_create_autocmd('CursorMoved', {
     group = grp,

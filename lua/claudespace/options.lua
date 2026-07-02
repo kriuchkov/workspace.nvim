@@ -93,11 +93,18 @@ vim.api.nvim_create_autocmd({ 'TermOpen', 'TermEnter' }, {
     vim.wo.relativenumber = false
     vim.wo.signcolumn = 'no'
     vim.opt.timeoutlen = 300
+    -- Raise the key-code timeout so an Esc-prefixed Alt (iTerm2/Terminal.app
+    -- send Alt+key as <Esc>key) assembles into <M-key> before Esc is forwarded
+    -- to the terminal — lets <A-N> tab-switching work from inside Claude.
+    vim.opt.ttimeoutlen = 50
   end,
 })
 
 vim.api.nvim_create_autocmd('TermLeave', {
-  callback = function() vim.opt.timeoutlen = 150 end,
+  callback = function()
+    vim.opt.timeoutlen = 150
+    vim.opt.ttimeoutlen = 10
+  end,
 })
 
 -- Restore number/signcolumn when switching back to a normal buffer

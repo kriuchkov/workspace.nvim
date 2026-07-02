@@ -173,6 +173,7 @@ function M.open(anchor_win)
   wo.number = false; wo.relativenumber = false
   wo.signcolumn = 'no'; wo.wrap = false
   wo.cursorline = true; wo.winfixwidth = true; wo.winbar = ''
+  wo.winfixbuf = true   -- Neovim 0.10+: nothing can replace the outline buffer in this window
 
   api.nvim_create_autocmd('WinClosed', {
     pattern  = tostring(S.win),

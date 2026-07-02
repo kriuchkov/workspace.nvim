@@ -97,7 +97,8 @@ end
 
 function M.setup()
   local map = vim.keymap.set
-  map('n', '<leader>rr', M.pick,
+  -- <leader>R (not <leader>rr — that's neotest "run nearest test").
+  map('n', '<leader>R', M.pick,
     { silent = true, desc = 'Tasks: pick and run' })
   map('n', '<leader>rb', function() M.run('build') end,
     { silent = true, desc = 'Tasks: build' })

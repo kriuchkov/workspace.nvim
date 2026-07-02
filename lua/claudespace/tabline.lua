@@ -41,7 +41,7 @@ local PIN_GLYPH = '▎'       -- accent bar marking pinned tabs (font-independen
 
 local TAB_MAXW  = 24                          -- truncate filenames beyond this width
 local RECENT_N  = 2                           -- this many MRU inactive tabs stay bright
-local SUPER     = { '¹', '²', '³', '⁴', '⁵' } -- quick-jump numbers (Alt+1..5)
+local SUPER     = { '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' } -- quick-jump numbers (<leader>1..9 / Alt+1..9)
 local CAP_L, CAP_R = '', ''                 -- rounded pill caps around the active tab
 
 -- Invalidate cache and schedule a tabline redraw.
@@ -50,6 +50,10 @@ local function invalidate()
   _tabline_cache = nil
   vim.cmd 'redrawtabline'
 end
+
+-- Forward-declared so the mouse handlers (defined earlier) can use the safe
+-- buffer switch (defined later).
+local set_buf_safe
 
 -- ── Per-directory persistence ─────────────────────────────────────────────────
 
@@ -190,60 +194,70 @@ function M.reapply_groups()
   invalidate()
 end
 
-local BORDER = '#3b4261'  -- separator colour (tokyonight storm border)
-local RAIL   = '#0d0e16'  -- tab bar rail (darkest)
-local EDITOR = '#1a1b26'  -- editor background
-local ACTIVE = '#24283b'  -- active tab: lighter than editor → clearly pops above it
+-- Tab-bar layer colours, re-derived from the active palette in setup_group_hls
+-- (also read by icon_hl). Seeded with the dark palette so nothing is nil before
+-- the first apply.
+local BORDER, RAIL, EDITOR, ACTIVE   -- separator / rail / editor bg / active tab
+local SP_DIM, SP_SEL                 -- underline colours: inactive / active accent
 
 local function setup_group_hls()
   local hi = vim.api.nvim_set_hl
+  local c  = require('claudespace.theme').colors()
   _icon_hl_cache = {}   -- icon fg colours may change with the theme → rebuild lazily
-  for i, c in ipairs(GROUP_COLORS) do
-    hi(0, 'CSGroup'  .. i, { bg = c.bg, fg = c.fg, bold = true })
-    hi(0, 'CSGroupT' .. i, { bg = RAIL, fg = c.bg })
+
+  BORDER = c.border
+  RAIL   = c.bg_dark    -- tab bar rail (darkest layer)
+  EDITOR = c.bg
+  ACTIVE = c.bg         -- active tab shares the editor bg → floats above the rail
+  SP_DIM = c.border_dim
+  SP_SEL = c.accent
+
+  for i, gc in ipairs(GROUP_COLORS) do
+    hi(0, 'CSGroup'  .. i, { bg = gc.bg, fg = gc.fg, bold = true })
+    hi(0, 'CSGroupT' .. i, { bg = RAIL, fg = gc.bg })
   end
   hi(0, 'WinSeparator', { fg = BORDER })
 
   -- Rail: darkest layer; underline draws a thin border below the whole tab bar
-  hi(0, 'TabLineFill', { bg = RAIL, sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLineFill', { bg = RAIL, sp = SP_DIM, underline = true })
   -- Inactive: dim text, sunken into rail
-  hi(0, 'TabLine',     { bg = RAIL, fg = '#3b4166', sp = '#2a2d3e', underline = true })
-  -- Active: LIGHTER than editor → floats above it; blue accent replaces the grey separator
-  hi(0, 'TabLineSel',  { bg = ACTIVE, fg = '#c0caf5', bold = true,
-                         sp = '#7aa2f7', underline = true })
+  hi(0, 'TabLine',     { bg = RAIL, fg = c.fg_faint, sp = SP_DIM, underline = true })
+  -- Active: shares editor bg → floats above rail; accent replaces the grey separator
+  hi(0, 'TabLineSel',  { bg = ACTIVE, fg = c.fg, bold = true,
+                         sp = SP_SEL, underline = true })
 
-  hi(0, 'CSTabClose',       { bg = RAIL,   fg = '#252840' })
-  hi(0, 'CSTabCloseActive', { bg = ACTIVE, fg = '#414868' })
-  hi(0, 'CSTabModified',    { bg = ACTIVE, fg = '#e0af68' })
-  hi(0, 'CSTabModifiedNC',  { bg = RAIL,   fg = '#5c4a1e' })
+  hi(0, 'CSTabClose',       { bg = RAIL,   fg = c.fg_faint })
+  hi(0, 'CSTabCloseActive', { bg = ACTIVE, fg = c.fg_dim })
+  hi(0, 'CSTabModified',    { bg = ACTIVE, fg = c.git_change })
+  hi(0, 'CSTabModifiedNC',  { bg = RAIL,   fg = c.fg_dim })
 
   -- Recently-used inactive tab: brighter than the sunken default (recency gradient)
-  hi(0, 'TabLineRecent', { bg = RAIL, fg = '#828bb8', sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLineRecent', { bg = RAIL, fg = c.fg_dim, sp = SP_DIM, underline = true })
   -- Quick-jump number (Alt+1..5)
-  hi(0, 'CSTabNum',    { bg = RAIL,   fg = '#4a4f6a', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabNumSel', { bg = ACTIVE, fg = '#7aa2f7', sp = '#7aa2f7', underline = true })
+  hi(0, 'CSTabNum',    { bg = RAIL,   fg = c.fg_faint, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabNumSel', { bg = ACTIVE, fg = c.accent,   sp = SP_SEL, underline = true })
   -- Pill caps around the active tab (tab colour on the rail)
-  hi(0, 'CSTabCap', { bg = RAIL, fg = ACTIVE, sp = '#2a2d3e', underline = true })
+  hi(0, 'CSTabCap', { bg = RAIL, fg = ACTIVE, sp = SP_DIM, underline = true })
 
   -- Diagnostics badges (error / warning) on both tab backgrounds
-  hi(0, 'CSTabDiagErr',     { bg = RAIL,   fg = '#f7768e', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabDiagErrSel',  { bg = ACTIVE, fg = '#f7768e', sp = '#7aa2f7', underline = true })
-  hi(0, 'CSTabDiagWarn',    { bg = RAIL,   fg = '#e0af68', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabDiagWarnSel', { bg = ACTIVE, fg = '#e0af68', sp = '#7aa2f7', underline = true })
+  hi(0, 'CSTabDiagErr',     { bg = RAIL,   fg = c.error, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabDiagErrSel',  { bg = ACTIVE, fg = c.error, sp = SP_SEL, underline = true })
+  hi(0, 'CSTabDiagWarn',    { bg = RAIL,   fg = c.warn,  sp = SP_DIM, underline = true })
+  hi(0, 'CSTabDiagWarnSel', { bg = ACTIVE, fg = c.warn,  sp = SP_SEL, underline = true })
   -- Overflow marker (‹N / N›) when tabs don't fit
-  hi(0, 'CSTabMore', { bg = RAIL, fg = '#7aa2f7', sp = '#2a2d3e', underline = true })
+  hi(0, 'CSTabMore', { bg = RAIL, fg = c.accent, sp = SP_DIM, underline = true })
 
   -- Git-coloured tab names: new/untracked = green, modified = orange
-  hi(0, 'CSTabGitNew',    { bg = RAIL,   fg = '#9ece6a', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabGitNewSel', { bg = ACTIVE, fg = '#9ece6a', sp = '#7aa2f7', underline = true, bold = true })
-  hi(0, 'CSTabGitMod',    { bg = RAIL,   fg = '#e0af68', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabGitModSel', { bg = ACTIVE, fg = '#e0af68', sp = '#7aa2f7', underline = true, bold = true })
+  hi(0, 'CSTabGitNew',    { bg = RAIL,   fg = c.git_add_fg, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabGitNewSel', { bg = ACTIVE, fg = c.git_add_fg, sp = SP_SEL, underline = true, bold = true })
+  hi(0, 'CSTabGitMod',    { bg = RAIL,   fg = c.git_change, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabGitModSel', { bg = ACTIVE, fg = c.git_change, sp = SP_SEL, underline = true, bold = true })
   -- Pinned inactive tab: distinct background so it stands out even if the pin
   -- glyph is missing from the font (font-independent indicator).
-  hi(0, 'TabLinePinned', { bg = '#26344d', fg = '#c0caf5', sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLinePinned', { bg = c.bg_sel, fg = c.fg, sp = SP_DIM, underline = true })
   -- Pin glyph (bright, bold)
-  hi(0, 'CSTabPin',    { bg = '#26344d', fg = '#e0af68', sp = '#2a2d3e', underline = true, bold = true })
-  hi(0, 'CSTabPinSel', { bg = ACTIVE,    fg = '#e0af68', sp = '#7aa2f7', underline = true, bold = true })
+  hi(0, 'CSTabPin',    { bg = c.bg_sel, fg = c.git_change, sp = SP_DIM, underline = true, bold = true })
+  hi(0, 'CSTabPinSel', { bg = ACTIVE,   fg = c.git_change, sp = SP_SEL, underline = true, bold = true })
 end
 
 local function group_hl(gid)
@@ -282,7 +296,7 @@ local function icon_hl(base_hl, sel)
     vim.api.nvim_set_hl(0, grp, {
       fg = fg,
       bg = sel and ACTIVE or RAIL,
-      sp = sel and '#7aa2f7' or '#2a2d3e',
+      sp = sel and SP_SEL or SP_DIM,
       underline = true,
     })
     _icon_hl_cache[grp] = true
@@ -415,6 +429,7 @@ local function listed_bufs()
   for _, b in ipairs(vim.api.nvim_list_bufs()) do
     if not vim.api.nvim_buf_is_valid(b) then goto next end
     if not vim.bo[b].buflisted then goto next end
+    if vim.b[b].cs_session_id then goto next end   -- Claude sessions live in the bottom bar
     if EXCLUDE_FT[vim.bo[b].filetype] then goto next end
     if EXCLUDE_BT[vim.bo[b].buftype] then goto next end
     if not buf_order[b] then order_seq = order_seq + 1; buf_order[b] = order_seq end
@@ -580,6 +595,8 @@ function M.render()
   local cur   = vim.api.nvim_get_current_buf()
   local prev_gid = nil   -- track group boundaries
   local pos   = 0        -- position index for CSTabSwitch
+  local group_pos = 0    -- group index for <leader>N quick-jump numbering
+  local buf_pos   = 0    -- buffer index WITHIN the current group (Alt+G then B)
 
   -- Count buffers per group for collapsed label
   local group_counts = {}
@@ -614,7 +631,10 @@ function M.render()
 
     -- Group label when a new group starts
     if gid ~= prev_gid then
+      buf_pos = 0   -- restart buffer numbering for the new group
       if grp then
+        group_pos = group_pos + 1
+        local num = (group_pos <= #SUPER) and (SUPER[group_pos] .. ' ') or ''
         local count = group_counts[gid] or 0
         local active_inside = grp.collapsed and (function()
           for _, b2 in ipairs(bufs) do
@@ -623,8 +643,8 @@ function M.render()
         end)()
         local marker = active_inside and ' ●' or ''
         local label = grp.collapsed
-          and (' ▶ ' .. grp.name .. ' (' .. count .. ')' .. marker .. ' ')
-          or  (' ▼ ' .. grp.name .. ' ')
+          and (' ' .. num .. '▶ ' .. grp.name .. ' (' .. count .. ')' .. marker .. ' ')
+          or  (' ' .. num .. '▼ ' .. grp.name .. ' ')
         u[#u+1] = '%#' .. group_hl(gid) .. '#'
         u[#u+1] = '%' .. gid .. '@v:lua.CSGroupToggle@'
         u[#u+1] = label
@@ -665,9 +685,10 @@ function M.render()
       u[#u+1] = (sel and '%#CSTabPinSel#' or '%#CSTabPin#') .. PIN_GLYPH .. tab_hl
     end
 
-    -- Quick-jump number (Alt+1..5) — only for the first 5 visible tabs
-    if pos <= #SUPER then
-      u[#u+1] = (sel and '%#CSTabNumSel#' or '%#CSTabNum#') .. ' ' .. SUPER[pos] .. ' ' .. tab_hl
+    -- Buffer number within its group (Alt+<group><this>)
+    buf_pos = buf_pos + 1
+    if buf_pos <= #SUPER then
+      u[#u+1] = (sel and '%#CSTabNumSel#' or '%#CSTabNum#') .. ' ' .. SUPER[buf_pos] .. ' ' .. tab_hl
     else
       u[#u+1] = '  '
     end
@@ -750,7 +771,7 @@ function _G.CSTabSwitch(idx)
     if not (grp and grp.collapsed) then
       visible = visible + 1
       if visible == idx then
-        vim.api.nvim_set_current_buf(b.bufnr)
+        set_buf_safe(b.bufnr)
         return
       end
     end
@@ -758,13 +779,7 @@ function _G.CSTabSwitch(idx)
 end
 
 function _G.CSTabClose(bufnr)
-  if not vim.api.nvim_buf_is_valid(bufnr) then return end
-  buf_group[bufnr] = nil  -- remove from group on close
-  if vim.bo[bufnr].buftype == 'terminal' then
-    M.close_terminal(bufnr)
-  else
-    M.close_normal(bufnr)
-  end
+  M.close(bufnr)   -- single safe close path
 end
 
 -- ── Buffer lifecycle ──────────────────────────────────────────────────────────
@@ -795,12 +810,12 @@ end
 
 function M._switch_away(buf)
   local bufs = visible_sorted_bufs()
-  if #bufs <= 1 then vim.cmd 'enew'; return end
+  if #bufs <= 1 then pcall(vim.cmd, 'enew'); return end
   local idx = 1
   for i, b in ipairs(bufs) do if b.bufnr == buf then idx = i; break end end
   local target = bufs[idx < #bufs and idx + 1 or idx - 1]
   if target and vim.api.nvim_get_current_buf() == buf then
-    vim.api.nvim_set_current_buf(target.bufnr)
+    set_buf_safe(target.bufnr)   -- safe: won't E1513 from a winfixbuf window
   end
 end
 
@@ -875,32 +890,49 @@ function M.close_all()
   invalidate()
 end
 
--- ── Navigation ────────────────────────────────────────────────────────────────
+-- Close every buffer in the current buffer's group (terminals are stopped;
+-- pinned / unsaved buffers are kept, like the other bulk-close ops).
+function M.close_group()
+  local cur = vim.api.nvim_get_current_buf()
+  local gid = buf_group[cur]
+  if not gid then
+    vim.notify('Current buffer is not in a group', vim.log.levels.WARN); return
+  end
+  local name = (groups[gid] and groups[gid].name) or '?'
 
--- Switch current window to a normal (non-fixed, non-special) buffer.
--- Falls back to wincmd p or finding any suitable window.
-local function set_buf_safe(bufnr)
-  local function ok_win(win)
-    local b = vim.api.nvim_win_get_buf(win)
-    return not vim.wo[win].winfixbuf
-        and vim.bo[b].buftype == ''
-        and not vim.bo[b].filetype:match('^cs_')
+  -- Move the window onto a buffer outside this group before deleting.
+  local outside
+  for _, b in ipairs(visible_sorted_bufs()) do
+    if buf_group[b.bufnr] ~= gid then outside = b.bufnr; break end
   end
-  local cur = vim.api.nvim_get_current_win()
-  if not ok_win(cur) then
-    vim.cmd 'wincmd p'
-    cur = vim.api.nvim_get_current_win()
-  end
-  if not ok_win(cur) then
-    for _, w in ipairs(vim.api.nvim_list_wins()) do
-      if vim.api.nvim_win_is_valid(w) and ok_win(w) then
-        vim.api.nvim_set_current_win(w); cur = w; break
+  if outside then vim.api.nvim_set_current_buf(outside) else vim.cmd 'enew' end
+
+  local closed, kept = 0, 0
+  for bn, g in pairs(vim.deepcopy(buf_group)) do
+    if g == gid and vim.api.nvim_buf_is_valid(bn) then
+      if vim.bo[bn].buftype == 'terminal' then
+        M.close_terminal(bn); closed = closed + 1
+      elseif safe_delete(bn) then
+        closed = closed + 1
+      else
+        kept = kept + 1
       end
     end
   end
-  if ok_win(cur) then
-    vim.api.nvim_set_current_buf(bufnr)
-  end
+  if kept == 0 and groups[gid] then groups[gid] = nil end
+  invalidate()
+  vim.notify(('Closed group "%s" — %d closed%s'):format(
+    name, closed, kept > 0 and (', ' .. kept .. ' kept (unsaved/pinned)') or ''),
+    vim.log.levels.INFO)
+end
+
+-- ── Navigation ────────────────────────────────────────────────────────────────
+
+-- Open a buffer in the center content window (never splits, never throws): a
+-- click while focus is in the tree/a bar can't E1513 — the shell routes it.
+function set_buf_safe(bufnr)
+  if not (bufnr and vim.api.nvim_buf_is_valid(bufnr)) then return end
+  require('claudespace.shell').open(bufnr)
 end
 
 function M.prev()
@@ -926,11 +958,123 @@ function M.goto_n(n)
   if bufs[n] then set_buf_safe(bufs[n].bufnr) end
 end
 
+-- Drop dead-buffer entries from every bufnr-keyed state table.
+function M.prune()
+  for _, t in ipairs { buf_group, buf_labels, M._pinned, buf_order, buf_access } do
+    for k in pairs(t) do
+      if type(k) == 'number' and not vim.api.nvim_buf_is_valid(k) then t[k] = nil end
+    end
+  end
+  invalidate()
+end
+
+-- The single safe entry point for closing a buffer (mouse ✕ and keymaps route
+-- here): dispatches terminal vs normal, then prunes stale state.
+function M.close(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if not vim.api.nvim_buf_is_valid(bufnr) then return end
+  buf_group[bufnr] = nil
+  pcall(function()
+    if vim.bo[bufnr].buftype == 'terminal' then M.close_terminal(bufnr)
+    else M.close_normal(bufnr) end
+  end)
+  M.prune()
+end
+
+-- Save the buffer (if it's a real file with unsaved edits) then close it — <A-w>.
+-- A failed write aborts the close so nothing is lost; nameless buffers can't be
+-- written, so those fall through to M.close's save/discard prompt.
+function M.write_close(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if not vim.api.nvim_buf_is_valid(bufnr) then return end
+  if vim.bo[bufnr].buftype == '' and vim.bo[bufnr].modified
+     and vim.api.nvim_buf_get_name(bufnr) ~= '' then
+    local ok = pcall(vim.api.nvim_buf_call, bufnr, function() vim.cmd 'write' end)
+    if not ok then return end
+  end
+  M.close(bufnr)
+end
+
+-- Groups in tabline order (first appearance of each gid in the sorted buffers).
+local function ordered_groups()
+  local seen, out = {}, {}
+  for _, b in ipairs(sorted_bufs(listed_bufs())) do
+    if b.gid and groups[b.gid] and not seen[b.gid] then
+      seen[b.gid] = true
+      out[#out + 1] = b.gid
+    end
+  end
+  return out
+end
+
+-- Jump to the n-th group: focus its most-recently-used buffer (expand if collapsed).
+function M.goto_group(n)
+  local gid = ordered_groups()[n]
+  if not gid then return end
+  local best, best_seq
+  for _, b in ipairs(sorted_bufs(listed_bufs())) do
+    if b.gid == gid then
+      local seq = buf_access[b.bufnr] or 0
+      if not best or seq > best_seq then best, best_seq = b.bufnr, seq end
+    end
+  end
+  if not best then return end
+  if groups[gid].collapsed then groups[gid].collapsed = false; invalidate() end
+  set_buf_safe(best)
+end
+
+-- The buffer shown in the center content window (so nav triggered from the tree
+-- or a panel acts on the center's tab, not the panel buffer).
+local function center_buf()
+  local shell = require('claudespace.shell')
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if shell.is_center(w) then return vim.api.nvim_win_get_buf(w) end
+  end
+  return vim.api.nvim_get_current_buf()
+end
+
+-- Jump to the n-th buffer within the center's group (matches the visible per-group
+-- numbers). Used by <A-1..9>. When the center shows a Claude session / ungrouped
+-- buffer, fall back to the first tab group so file tabs stay reachable.
+function M.goto_buf_n(n)
+  local gid = buf_group[center_buf()]
+  if not gid then gid = ordered_groups()[1] end
+  local idx = 0
+  for _, b in ipairs(sorted_bufs(listed_bufs())) do
+    if b.gid == gid then
+      idx = idx + 1
+      if idx == n then set_buf_safe(b.bufnr); return end
+    end
+  end
+  -- No matching group buffer (e.g. all ungrouped): fall back to the n-th visible.
+  local vis = visible_sorted_bufs()
+  if vis[n] then set_buf_safe(vis[n].bufnr) end
+end
+
+-- Open the b-th buffer within the g-th group.
+function M.goto_group_buf(g, b)
+  local gid = ordered_groups()[g]
+  if not gid then return end
+  if groups[gid].collapsed then groups[gid].collapsed = false; invalidate() end
+  local idx = 0
+  for _, buf in ipairs(sorted_bufs(listed_bufs())) do
+    if buf.gid == gid then
+      idx = idx + 1
+      if idx == b then set_buf_safe(buf.bufnr); return end
+    end
+  end
+end
+
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
   setup_group_hls()
-  vim.api.nvim_create_autocmd('ColorScheme', { callback = setup_group_hls })
+  vim.api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_group_hls })
+
+  -- Keep state tables free of dead buffers.
+  vim.api.nvim_create_autocmd({ 'BufDelete', 'BufWipeout' }, {
+    callback = function() vim.schedule(M.prune) end,
+  })
 
   -- Persist groups per directory
   vim.api.nvim_create_autocmd('VimLeave', { callback = save_session })
@@ -999,15 +1143,34 @@ function M.setup()
   vim.o.tabline = '%!v:lua.require("claudespace.tabline").render()'
 
   local map = vim.keymap.set
-  map('n', '<A-,>', M.prev, { silent = true, desc = 'Prev tab' })
-  map('n', '<A-.>', M.next, { silent = true, desc = 'Next tab' })
-  map('n', '<A-c>', function()
-    local buf = vim.api.nvim_get_current_buf()
-    if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf)
-    else M.close_normal(buf) end
-  end, { silent = true, desc = 'Close tab' })
-  for i = 1, 5 do
-    map('n', '<A-' .. i .. '>', function() M.goto_n(i) end, { silent = true })
+  -- Alt keys are terminal-safe ({n,t}) — they aren't typed text. Leader keys stay
+  -- normal-mode only: <leader> is <Space>, and mapping it in a terminal would add
+  -- timeout latency to every space typed into Claude (use <Esc><Esc> there).
+  local NT = { 'n', 't' }
+  map(NT, '<A-,>', M.prev, { silent = true, desc = 'Prev tab' })
+  map(NT, '<A-.>', M.next, { silent = true, desc = 'Next tab' })
+  map(NT, '<A-c>', function() M.close() end, { silent = true, desc = 'Close tab' })
+  map(NT, '<A-w>', function() M.write_close() end, { silent = true, desc = 'Save & close tab' })
+  --   <leader>G   → group G            (fires after timeoutlen if no 2nd digit)
+  --   <leader>GB  → group G, buffer B  (e.g. <leader>12 = group 1, buffer 2)
+  for g = 1, 9 do
+    map('n', '<leader>' .. g, function() M.goto_group(g) end,
+      { silent = true, desc = 'Tab: group ' .. g })
+    map(NT, '<A-' .. g .. '>', function() M.goto_buf_n(g) end, { silent = true })
+    for b = 1, 9 do
+      map('n', '<leader>' .. g .. b, function() M.goto_group_buf(g, b) end,
+        { silent = true })
+    end
+  end
+  -- Keep all the numeric quick-jump maps out of the which-key popup (clutter).
+  local ok_wk, wk = pcall(require, 'which-key')
+  if ok_wk and wk.add then
+    local spec = {}
+    for g = 1, 9 do
+      spec[#spec + 1] = { '<leader>' .. g, hidden = true }
+      for b = 1, 9 do spec[#spec + 1] = { '<leader>' .. g .. b, hidden = true } end
+    end
+    wk.add(spec)
   end
 
   -- Group keymaps
@@ -1069,10 +1232,8 @@ function M.setup()
   -- Pin / move / close actions
   map('n', '<leader>tp', function() M.toggle_pin() end,
     { silent = true, desc = 'Tab: pin/unpin (float left)' })
-  map('n', '<leader>tw', function()
-    local buf = vim.api.nvim_get_current_buf()
-    if vim.bo[buf].buftype == 'terminal' then M.close_terminal(buf) else M.close_normal(buf) end
-  end, { silent = true, desc = 'Tab: close current' })
+  map('n', '<leader>tw', function() M.close() end, { silent = true, desc = 'Tab: close current' })
+  map('n', '<leader>tq', M.close_group,  { silent = true, desc = 'Tab: close group (all its buffers)' })
   map('n', '<leader>to', M.close_others, { silent = true, desc = 'Tab: close others' })
   map('n', '<leader>th', M.close_left,   { silent = true, desc = 'Tab: close to the left' })
   map('n', '<leader>tl', M.close_right,  { silent = true, desc = 'Tab: close to the right' })

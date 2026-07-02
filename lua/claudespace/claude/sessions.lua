@@ -45,24 +45,83 @@ local function win_opts()
   vim.wo.scrolloff = 0
 end
 
-local function ensure_editor_win()
-  local function special(win)
-    local b = api.nvim_win_get_buf(win)
-    return vim.wo[win].winfixbuf
-        or vim.bo[b].buftype ~= ''
-        or vim.bo[b].filetype:match('^cs_')
-  end
-  if not special(api.nvim_get_current_win()) then return end
-  vim.cmd 'wincmd p'
-  if not special(api.nvim_get_current_win()) then return end
-  for _, w in ipairs(api.nvim_list_wins()) do
-    if api.nvim_win_is_valid(w) and not special(w) then
-      api.nvim_set_current_win(w); return
-    end
-  end
-  -- vsplit without enew — the split reuses the current buffer, no orphan [No Name]
-  vim.cmd 'vsplit'
+-- Claude sessions are shown in the bottom bar (claudespace.claude.bottombar),
+-- not the top tabline — no grouping needed.
+local function group_claude(_) end
+
+local shell = require('claudespace.shell')
+
+-- Open `buf` in the single center window and collapse any duplicate Claude panes.
+local function open_center(buf)
+  local win = shell.open(buf)
+  shell.consolidate(win, function(w)
+    local b = api.nvim_win_get_buf(w)
+    return vim.b[b] and vim.b[b].cs_session_id ~= nil
+  end)
+  return win
 end
+
+-- Build the launch command. flag '' = fresh chat, ' --continue' = resume the
+-- most recent conversation in the cwd, ' --resume' = pick from past sessions.
+local function claude_cmd(flag)
+  return "zsh -i -c 'claude" .. (flag or '') .. "'"
+end
+
+-- Claude stores each conversation as ~/.claude/projects/<enc-cwd>/<uuid>.jsonl,
+-- where enc-cwd is the absolute path with '/' and '.' replaced by '-'.
+local function project_dir(cwd)
+  return fn.expand('~/.claude/projects/') .. (cwd:gsub('[/.]', '-'))
+end
+
+-- A conversation id is later interpolated into the launch shell string
+-- (`claude --resume <id>`), so accept only the hex+dash shape of a real UUID.
+-- This blocks shell injection from a crafted *.jsonl filename or a tampered
+-- workspace file (e.g. an id containing a quote that breaks out of the command).
+local function valid_id(uuid)
+  return type(uuid) == 'string' and uuid:match('^[%x][%x%-]*$') ~= nil
+end
+
+-- Conversation UUIDs for a cwd, newest-first (invalid-shaped names filtered out).
+local function session_ids(cwd)
+  local files = fn.glob(project_dir(cwd) .. '/*.jsonl', true, true)
+  table.sort(files, function(a, b) return fn.getftime(a) > fn.getftime(b) end)
+  local ids = {}
+  for _, f in ipairs(files) do
+    local id = fn.fnamemodify(f, ':t:r')
+    if valid_id(id) then ids[#ids + 1] = id end
+  end
+  return ids
+end
+
+-- Return uuid only if it's a valid, still-present conversation for cwd, else nil.
+local function resume_id(cwd, uuid)
+  if not valid_id(uuid) then return nil end
+  if fn.filereadable(project_dir(cwd) .. '/' .. uuid .. '.jsonl') == 0 then return nil end
+  return uuid
+end
+
+-- Ids already bound to a live session (so siblings in the same cwd don't collide).
+local function claimed_ids()
+  local set = {}
+  for _, s in pairs(sessions) do if s.claude_id then set[s.claude_id] = true end end
+  return set
+end
+
+-- Claude writes the conversation file a moment after launch. Grab the newest id
+-- for this cwd that no other session has claimed, so we can --resume the *exact*
+-- conversation on workspace restore instead of --continue (which would point
+-- every same-cwd session at the single latest one).
+local function capture_id(sess)
+  vim.defer_fn(function()
+    if not sessions[sess.id] or sess.claude_id then return end
+    local claimed = claimed_ids()
+    for _, uuid in ipairs(session_ids(sess.cwd)) do
+      if not claimed[uuid] then sess.claude_id = uuid; return end
+    end
+  end, 3000)
+end
+
+local ensure_editor_win = require('claudespace.claude.util').ensure_editor_win
 
 -- Delete buf if it's a listed empty [No Name] buffer (cleanup after M.new replaces it).
 local function wipe_empty(buf)
@@ -78,8 +137,19 @@ end
 
 ---Create and open a new Claude session in the current window.
 ---@param cwd? string
-function M.new(cwd)
-  cwd = cwd or fn.getcwd()
+-- The repo a session belongs to (by cwd), for grouping/labelling.
+local function session_repo(s)
+  local ok, repos = pcall(require, 'claudespace.repos')
+  return ok and repos.of(s.cwd) or nil
+end
+
+function M.new(cwd, flag)
+  if not cwd then
+    -- Start in the active repo so Claude picks up that repo's CLAUDE.md cascade.
+    local ok, repos = pcall(require, 'claudespace.repos')
+    local m = ok and repos.active()
+    cwd = (m and m.abspath) or fn.getcwd()
+  end
   local id   = next_id; next_id = next_id + 1
   local name = 'Chat ' .. id
   local sess = { id = id, name = name, cwd = cwd }
@@ -87,13 +157,15 @@ function M.new(cwd)
   table.insert(order, id)
   active_id = id
 
-  local prev_buf = api.nvim_win_get_buf(0)
+  local win = shell.center()
+  local prev_buf = api.nvim_win_get_buf(win)
   local buf = api.nvim_create_buf(true, false)
   vim.b[buf].cs_session_id = id
-  api.nvim_win_set_buf(0, buf)
-  local job_id = fn.termopen("zsh -i -c 'claude'", { cwd = cwd })
+  open_center(buf)
+  local job_id = fn.termopen(claude_cmd(flag), { cwd = cwd })
   sess.bufnr  = buf
   sess.job_id = job_id
+  capture_id(sess)
 
   -- Inject workspace context once claude CLI has booted (~2.5s)
   vim.defer_fn(function()
@@ -124,13 +196,13 @@ function M.open(id)
   local sess = sessions[id]; if not sess then return end
   local buf  = live_buf(id)
   if buf then
-    api.nvim_win_set_buf(0, buf)
+    open_center(buf)
   else
     -- process died but session entry survived — restart
     buf = api.nvim_create_buf(true, false)
     vim.b[buf].cs_session_id = id
-    api.nvim_win_set_buf(0, buf)
-    fn.termopen("zsh -i -c 'claude'", { cwd = sess.cwd })
+    open_center(buf)
+    fn.termopen(claude_cmd(' --continue'), { cwd = sess.cwd })  -- resume the conversation
     sess.bufnr = buf
     vim.schedule(function()
       if api.nvim_buf_is_valid(buf) then name_buf(buf, sess.name) end
@@ -152,6 +224,18 @@ function M.toggle()
   if #list == 0 then M.new(); return end
   M.open((sessions[active_id] or list[1]).id)
 end
+
+---Jump to the n-th Claude session (matches the numbers in the bottom bar).
+function M.goto_index(n)
+  local list = ordered()
+  if list[n] then M.open(list[n].id) end
+end
+
+---New session resuming the most recent conversation in the (active) repo.
+function M.continue(cwd) M.new(cwd, ' --continue') end
+
+---New session running Claude's `--resume` picker to restore any past conversation.
+function M.resume(cwd) M.new(cwd, ' --resume') end
 
 ---Next session (wraps).
 function M.next()
@@ -216,12 +300,25 @@ function M.pick()
   pickers.new({}, {
     prompt_title = 'Claude Sessions',
     finder = finders.new_table {
-      results = ordered(),
+      results = (function()
+        local list = ordered()
+        table.sort(list, function(a, b)
+          local ra = (session_repo(a) or {}).label or ''
+          local rb = (session_repo(b) or {}).label or ''
+          if ra ~= rb then return ra < rb end
+          return a.id < b.id
+        end)
+        return list
+      end)(),
       entry_maker = function(s)
         local active = s.id == active_id
-        local label  = (active and '⚡ ' or '  ') .. s.name
-        if s.cwd then label = label .. '  ' .. fn.fnamemodify(s.cwd, ':~') end
-        return { value = s, display = label, ordinal = s.name .. (s.cwd or '') }
+        local repo   = session_repo(s)
+        local tag    = repo and ('[' .. repo.label .. '] ') or ''
+        local label  = (active and '⚡ ' or '  ') .. tag .. s.name
+        return {
+          value = s, display = label,
+          ordinal = (repo and repo.label or '') .. ' ' .. s.name,
+        }
       end,
     },
     sorter = conf.generic_sorter {},
@@ -279,23 +376,29 @@ end
 ---Returns a snapshot of current sessions for workspace persistence.
 function M.get_persistence_data()
   return vim.tbl_map(function(s)
-    return { name = s.name, cwd = s.cwd }
+    return { name = s.name, cwd = s.cwd, claude_id = s.claude_id }
   end, ordered())
 end
 
 ---Start a session in a background buffer (no visible window).
 ---termopen() requires a window, so we briefly open a 1-line split then close it.
-local function start_background(sess)
+local function start_background(sess, flag)
   local orig_win = api.nvim_get_current_win()
   local buf = api.nvim_create_buf(true, false)
   vim.b[buf].cs_session_id = sess.id
+  group_claude(buf)
   sess.bufnr = buf
 
-  vim.cmd 'botright 1split'
-  local tmp_win = api.nvim_get_current_win()
-  api.nvim_win_set_buf(tmp_win, buf)
-  fn.termopen("zsh -i -c 'claude'", { cwd = sess.cwd })
-  -- Close the split — process keeps running in the buffer
+  -- termopen needs the buffer current in a window to size the PTY. Use a float
+  -- with noautocmd instead of a split: it doesn't reflow the real layout (no
+  -- flicker) and fires no Win* autocmds. Everything here is synchronous, so the
+  -- float never paints before we close it.
+  local tmp_win = api.nvim_open_win(buf, true, {
+    relative = 'editor', width = 80, height = 24,
+    row = 0, col = 0, focusable = false, style = 'minimal', noautocmd = true,
+  })
+  fn.termopen(claude_cmd(flag or ' --continue'), { cwd = sess.cwd })
+  -- Close the float — process keeps running in the buffer
   pcall(api.nvim_win_close, tmp_win, true)
   pcall(api.nvim_set_current_win, orig_win)
 
@@ -316,14 +419,36 @@ end
 ---@param data table  list of {name, cwd}
 function M.restore(data)
   if not data or #data == 0 then return end
+  -- Resume each session on its *own* conversation. Prefer the stored claude_id;
+  -- otherwise fall back to the recent on-disk conversations for that cwd, handing
+  -- each same-cwd session a distinct one so they don't all collapse onto --continue.
+  local pool = {}   -- cwd -> list of available uuids (newest-first)
+  local used = {}
+  for _, entry in ipairs(data) do
+    if valid_id(entry.claude_id) then used[entry.claude_id] = true end
+  end
+  local function next_uuid(cwd)
+    if pool[cwd] == nil then pool[cwd] = session_ids(cwd) end
+    for i, uuid in ipairs(pool[cwd]) do
+      if not used[uuid] then
+        used[uuid] = true
+        table.remove(pool[cwd], i)
+        return uuid
+      end
+    end
+  end
+
   for _, entry in ipairs(data) do
     if entry.cwd and entry.name then
       local id   = next_id; next_id = next_id + 1
-      local sess = { id = id, name = entry.name, cwd = entry.cwd }
+      -- resume_id validates the persisted id AND that its file still exists;
+      -- otherwise hand out a distinct recent conversation for the cwd.
+      local uuid = resume_id(entry.cwd, entry.claude_id) or next_uuid(entry.cwd)
+      local sess = { id = id, name = entry.name, cwd = entry.cwd, claude_id = uuid }
       sessions[id] = sess
       table.insert(order, id)
       if not active_id then active_id = id end
-      start_background(sess)
+      start_background(sess, uuid and (' --resume ' .. uuid) or ' --continue')
     end
   end
   vim.notify(
@@ -374,27 +499,46 @@ function M.setup()
   -- Keymaps
   local map = vim.keymap.set
 
-  map({ 'n', 't' }, '<leader>cc', function()
-    ensure_editor_win(); M.toggle()
-  end, { desc = 'Claude: open/toggle', silent = true })
+  map('n', '<leader>cc', M.toggle,
+    { desc = 'Claude: open/toggle', silent = true })
 
-  map({ 'n', 't' }, '<leader>cn', function()
-    ensure_editor_win(); M.new()
-  end, { desc = 'Claude: new session', silent = true })
+  map('n', '<leader>cn', function() M.new() end,
+    { desc = 'Claude: new session', silent = true })
 
-  map({ 'n', 't' }, '<leader>ch', function()
-    ensure_editor_win(); M.prev()
-  end, { desc = 'Claude: prev session', silent = true })
+  map('n', '<leader>cu', function() M.resume() end,
+    { desc = 'Claude: resume past session (--resume)', silent = true })
 
-  map({ 'n', 't' }, '<leader>cl', function()
-    ensure_editor_win(); M.next()
-  end, { desc = 'Claude: next session', silent = true })
+  api.nvim_create_user_command('ClaudeResume',   function() M.resume() end,   { desc = 'Resume a past Claude session' })
+  api.nvim_create_user_command('ClaudeContinue', function() M.continue() end, { desc = 'Continue the most recent Claude conversation' })
 
-  map({ 'n', 't' }, '<leader>cs', M.pick,
+  map('n', '<leader>ch', M.prev,
+    { desc = 'Claude: prev session', silent = true })
+
+  map('n', '<leader>cl', M.next,
+    { desc = 'Claude: next session', silent = true })
+
+  map('n', '<leader>cs', M.pick,
     { desc = 'Claude: pick session', silent = true })
 
-  map({ 'n', 't' }, '<leader>cR', M.rename_current,
+  map('n', '<leader>cR', M.rename_current,
     { desc = 'Claude: rename session', silent = true })
+
+  -- Alt-based session cycling works from inside a Claude terminal too (unlike the
+  -- <leader> keys, which are <Space> and would clash with typing). <A-h>/<A-l>.
+  map({ 'n', 't' }, '<A-h>', M.prev, { silent = true, desc = 'Claude: prev session' })
+  map({ 'n', 't' }, '<A-l>', M.next, { silent = true, desc = 'Claude: next session' })
+
+  -- Numeric quick-jump to bottom-bar session N (¹²³ …), hidden from which-key.
+  -- Works from a Claude terminal too ({n,t}, matching the other session keys).
+  for i = 1, 9 do
+    map('n', '<leader>c' .. i, function() M.goto_index(i) end, { silent = true })
+  end
+  local ok_wk, wk = pcall(require, 'which-key')
+  if ok_wk and wk.add then
+    local spec = {}
+    for i = 1, 9 do spec[#spec + 1] = { '<leader>c' .. i, hidden = true } end
+    wk.add(spec)
+  end
 end
 
 -- ── Test exports ──────────────────────────────────────────────────────────────

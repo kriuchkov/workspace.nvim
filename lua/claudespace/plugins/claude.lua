@@ -43,12 +43,10 @@ if pcall(require, 'claudecode') then
   }
 
   local map = vim.keymap.set
-  map('n', '<leader>cS', '<cmd>ClaudeCodeSend<cr>',
-    { desc = 'Claude: send file as @mention',      silent = true })
-  map('v', '<leader>cS', '<cmd>ClaudeCodeSend<cr>',
+  -- @mention / tree-add are reachable from the <leader>cA context picker;
+  -- keep a visual-mode @mention for sending a selection.
+  map('v', '<leader>cA', '<cmd>ClaudeCodeSend<cr>',
     { desc = 'Claude: send selection as @mention', silent = true })
-  map('n', '<leader>cA', '<cmd>ClaudeCodeTreeAdd<cr>',
-    { desc = 'Claude: add tree file to context',   silent = true })
   -- Accept / reject inline diff proposed by Claude Code
   map('n', '<leader>cy', '<cmd>ClaudeCodeDiffAccept<cr>',
     { desc = 'Claude: accept diff',                silent = true })
