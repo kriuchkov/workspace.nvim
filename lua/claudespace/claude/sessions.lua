@@ -73,11 +73,31 @@ local function project_dir(cwd)
   return fn.expand('~/.claude/projects/') .. (cwd:gsub('[/.]', '-'))
 end
 
--- Conversation UUIDs for a cwd, newest-first.
+-- A conversation id is later interpolated into the launch shell string
+-- (`claude --resume <id>`), so accept only the hex+dash shape of a real UUID.
+-- This blocks shell injection from a crafted *.jsonl filename or a tampered
+-- workspace file (e.g. an id containing a quote that breaks out of the command).
+local function valid_id(uuid)
+  return type(uuid) == 'string' and uuid:match('^[%x][%x%-]*$') ~= nil
+end
+
+-- Conversation UUIDs for a cwd, newest-first (invalid-shaped names filtered out).
 local function session_ids(cwd)
   local files = fn.glob(project_dir(cwd) .. '/*.jsonl', true, true)
   table.sort(files, function(a, b) return fn.getftime(a) > fn.getftime(b) end)
-  return vim.tbl_map(function(f) return fn.fnamemodify(f, ':t:r') end, files)
+  local ids = {}
+  for _, f in ipairs(files) do
+    local id = fn.fnamemodify(f, ':t:r')
+    if valid_id(id) then ids[#ids + 1] = id end
+  end
+  return ids
+end
+
+-- Return uuid only if it's a valid, still-present conversation for cwd, else nil.
+local function resume_id(cwd, uuid)
+  if not valid_id(uuid) then return nil end
+  if fn.filereadable(project_dir(cwd) .. '/' .. uuid .. '.jsonl') == 0 then return nil end
+  return uuid
 end
 
 -- Ids already bound to a live session (so siblings in the same cwd don't collide).
@@ -405,7 +425,7 @@ function M.restore(data)
   local pool = {}   -- cwd -> list of available uuids (newest-first)
   local used = {}
   for _, entry in ipairs(data) do
-    if entry.claude_id then used[entry.claude_id] = true end
+    if valid_id(entry.claude_id) then used[entry.claude_id] = true end
   end
   local function next_uuid(cwd)
     if pool[cwd] == nil then pool[cwd] = session_ids(cwd) end
@@ -421,7 +441,9 @@ function M.restore(data)
   for _, entry in ipairs(data) do
     if entry.cwd and entry.name then
       local id   = next_id; next_id = next_id + 1
-      local uuid = entry.claude_id or next_uuid(entry.cwd)
+      -- resume_id validates the persisted id AND that its file still exists;
+      -- otherwise hand out a distinct recent conversation for the cwd.
+      local uuid = resume_id(entry.cwd, entry.claude_id) or next_uuid(entry.cwd)
       local sess = { id = id, name = entry.name, cwd = entry.cwd, claude_id = uuid }
       sessions[id] = sess
       table.insert(order, id)

@@ -971,6 +971,20 @@ function M.close(bufnr)
   M.prune()
 end
 
+-- Save the buffer (if it's a real file with unsaved edits) then close it — <A-w>.
+-- A failed write aborts the close so nothing is lost; nameless buffers can't be
+-- written, so those fall through to M.close's save/discard prompt.
+function M.write_close(bufnr)
+  bufnr = bufnr or vim.api.nvim_get_current_buf()
+  if not vim.api.nvim_buf_is_valid(bufnr) then return end
+  if vim.bo[bufnr].buftype == '' and vim.bo[bufnr].modified
+     and vim.api.nvim_buf_get_name(bufnr) ~= '' then
+    local ok = pcall(vim.api.nvim_buf_call, bufnr, function() vim.cmd 'write' end)
+    if not ok then return end
+  end
+  M.close(bufnr)
+end
+
 -- Groups in tabline order (first appearance of each gid in the sorted buffers).
 local function ordered_groups()
   local seen, out = {}, {}
@@ -1126,6 +1140,7 @@ function M.setup()
   map(NT, '<A-,>', M.prev, { silent = true, desc = 'Prev tab' })
   map(NT, '<A-.>', M.next, { silent = true, desc = 'Next tab' })
   map(NT, '<A-c>', function() M.close() end, { silent = true, desc = 'Close tab' })
+  map(NT, '<A-w>', function() M.write_close() end, { silent = true, desc = 'Save & close tab' })
   --   <leader>G   → group G            (fires after timeoutlen if no 2nd digit)
   --   <leader>GB  → group G, buffer B  (e.g. <leader>12 = group 1, buffer 2)
   for g = 1, 9 do

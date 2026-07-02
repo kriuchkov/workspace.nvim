@@ -470,10 +470,18 @@ function M.open_target(target, buf)
     vim.notify('No heading: ' .. target, vim.log.levels.WARN); return
   end
 
-  if target:match('^%a[%w+.-]*://') or target:match('^mailto:') or target:match('^www%.') then
+  -- External link. Only hand safe schemes to the OS opener: a markdown file may
+  -- come from an untrusted source (AI output, a cloned repo) and arbitrary URL
+  -- schemes can launch apps / handlers on macOS. http(s), mailto and bare www.
+  -- cover real docs; anything else is surfaced instead of opened.
+  if target:match('^https?://') or target:match('^mailto:') or target:match('^www%.') then
     local url = target:match('^www%.') and ('https://' .. target) or target
-    local ok = pcall(vim.ui.open, url)
+    local ok = pcall(vim.ui.open, url)   -- argv-based, no shell interpolation
     if not ok then fn.jobstart({ 'open', url }) end
+    return
+  end
+  if target:match('^%a[%w+.-]*:') then
+    vim.notify('Refusing to open scheme: ' .. target, vim.log.levels.WARN)
     return
   end
 
