@@ -479,6 +479,7 @@ function M.open_target(target, buf)
 
   local path, anchor = target:match('^([^#]*)#?(.*)$')
   if not path or path == '' then return end
+  path = path:gsub('%%(%x%x)', function(h) return string.char(tonumber(h, 16)) end)
   if not path:match('^/') then
     path = fn.fnamemodify(api.nvim_buf_get_name(buf), ':h') .. '/' .. path
   end
