@@ -73,13 +73,14 @@ local NS = api.nvim_create_namespace 'cs_activitybar'
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
-  hi(0, 'CSAbBg',       { bg = '#16161e' })
-  hi(0, 'CSAbActive',   { bg = '#16161e', fg = '#7dcfff', bold = true })
-  hi(0, 'CSAbInactive', { bg = '#16161e', fg = '#828bb8' })
-  hi(0, 'CSAbBadgeErr',  { bg = '#16161e', fg = '#f7768e', bold = true })
-  hi(0, 'CSAbBadgeInfo', { bg = '#16161e', fg = '#7dcfff', bold = true })
-  hi(0, 'CSAbTip',       { bg = '#2d3149', fg = '#c0caf5', bold = true })
-  hi(0, 'CSAbSel',       { bg = '#2d3149' })   -- cursor row when the bar is focused
+  local c  = require('claudespace.theme').colors()
+  hi(0, 'CSAbBg',       { bg = c.bg_dark })
+  hi(0, 'CSAbActive',   { bg = c.bg_dark, fg = c.cyan, bold = true })
+  hi(0, 'CSAbInactive', { bg = c.bg_dark, fg = c.fg_dim })
+  hi(0, 'CSAbBadgeErr',  { bg = c.bg_dark, fg = c.red, bold = true })
+  hi(0, 'CSAbBadgeInfo', { bg = c.bg_dark, fg = c.cyan, bold = true })
+  hi(0, 'CSAbTip',       { bg = c.bg_sel, fg = c.fg, bold = true })
+  hi(0, 'CSAbSel',       { bg = c.bg_sel })   -- cursor row when the bar is focused
 end
 
 local function render_bar()
@@ -288,7 +289,7 @@ end
 
 function M.setup()
   setup_highlights()
-  api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
   api.nvim_create_autocmd({ 'WinResized', 'WinClosed' }, {
     callback = function() vim.schedule(repin_widths) end,
   })

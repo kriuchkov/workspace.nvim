@@ -20,28 +20,29 @@ end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
-  hi(0, 'CSMdH1', { fg = '#7aa2f7', bold = true })
-  hi(0, 'CSMdH2', { fg = '#7dcfff', bold = true })
-  hi(0, 'CSMdH3', { fg = '#9ece6a', bold = true })
-  hi(0, 'CSMdH4', { fg = '#e0af68', bold = true })
-  hi(0, 'CSMdH5', { fg = '#bb9af7', bold = true })
-  hi(0, 'CSMdH6', { fg = '#f7768e', bold = true })
-  hi(0, 'CSMdCodeBg',     { bg = '#1b1d2b' })
-  hi(0, 'CSMdCodeFence',  { fg = '#414868' })
-  hi(0, 'CSMdInlineCode', { fg = '#bb9af7', bg = '#1f2233' })
-  hi(0, 'CSMdBold',       { bold = true, fg = '#c0caf5' })
+  local c  = require('claudespace.theme').colors()
+  hi(0, 'CSMdH1', { fg = c.blue, bold = true })
+  hi(0, 'CSMdH2', { fg = c.cyan, bold = true })
+  hi(0, 'CSMdH3', { fg = c.green, bold = true })
+  hi(0, 'CSMdH4', { fg = c.yellow, bold = true })
+  hi(0, 'CSMdH5', { fg = c.purple, bold = true })
+  hi(0, 'CSMdH6', { fg = c.red, bold = true })
+  hi(0, 'CSMdCodeBg',     { bg = c.bg_alt })
+  hi(0, 'CSMdCodeFence',  { fg = c.fg_dim })
+  hi(0, 'CSMdInlineCode', { fg = c.purple, bg = c.bg_alt })
+  hi(0, 'CSMdBold',       { bold = true, fg = c.fg })
   hi(0, 'CSMdItalic',     { italic = true })
-  hi(0, 'CSMdBullet',     { fg = '#7dcfff' })
-  hi(0, 'CSMdRule',       { fg = '#414868' })
-  hi(0, 'CSMdQuote',      { fg = '#565f89', italic = true })
-  hi(0, 'CSMdCheckOn',    { fg = '#9ece6a' })
-  hi(0, 'CSMdCheckOff',   { fg = '#565f89' })
-  hi(0, 'CSMdLink',       { fg = '#7dcfff', underline = true })
-  hi(0, 'CSMdNote',    { fg = '#7aa2f7', bold = true })
-  hi(0, 'CSMdTip',     { fg = '#9ece6a', bold = true })
-  hi(0, 'CSMdWarn',    { fg = '#e0af68', bold = true })
-  hi(0, 'CSMdCaution', { fg = '#f7768e', bold = true })
-  hi(0, 'CSMdTablePipe', { fg = '#3d59a1' })
+  hi(0, 'CSMdBullet',     { fg = c.cyan })
+  hi(0, 'CSMdRule',       { fg = c.fg_dim })
+  hi(0, 'CSMdQuote',      { fg = c.fg_dim, italic = true })
+  hi(0, 'CSMdCheckOn',    { fg = c.green })
+  hi(0, 'CSMdCheckOff',   { fg = c.fg_dim })
+  hi(0, 'CSMdLink',       { fg = c.cyan, underline = true })
+  hi(0, 'CSMdNote',    { fg = c.blue, bold = true })
+  hi(0, 'CSMdTip',     { fg = c.green, bold = true })
+  hi(0, 'CSMdWarn',    { fg = c.warn, bold = true })
+  hi(0, 'CSMdCaution', { fg = c.red, bold = true })
+  hi(0, 'CSMdTablePipe', { fg = c.blue })
 end
 
 -- GitHub callouts: > [!NOTE] etc.
@@ -608,12 +609,14 @@ end
 
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
-function M.setup()
+local function apply_hls()
   setup_highlights()
-  api.nvim_set_hl(0, 'CSMdDim', { fg = '#3b4261' })
-  api.nvim_create_autocmd('ColorScheme', { callback = function()
-    setup_highlights(); api.nvim_set_hl(0, 'CSMdDim', { fg = '#3b4261' })
-  end })
+  api.nvim_set_hl(0, 'CSMdDim', { fg = require('claudespace.theme').colors().fg_faint })
+end
+
+function M.setup()
+  apply_hls()
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = apply_hls })
 
   api.nvim_create_autocmd('CursorMoved', {
     callback = function(a) if focus_on[a.buf] then apply_focus(a.buf) end end,

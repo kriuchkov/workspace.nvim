@@ -54,13 +54,14 @@ end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
-  hi(0, 'CSWinbarDir',  { fg = '#545c7e', bg = '#13151f' })
-  hi(0, 'CSWinbarFile', { fg = '#a9b1d6', bg = '#13151f', bold = true })
-  hi(0, 'CSWinbarSym',  { fg = '#7dcfff', bg = '#13151f' })
-  hi(0, 'CSWinbarNav',  { fg = '#7aa2f7', bg = '#13151f' })
-  hi(0, 'CSWinbarWs',       { fg = '#7dcfff', bg = '#13151f', bold = true })
-  hi(0, 'CSWinbarWsBranch', { fg = '#9ece6a', bg = '#13151f' })
-  hi(0, 'CSWinbarWsDirty',  { fg = '#e0af68', bg = '#13151f' })
+  local c  = require('claudespace.theme').colors()
+  hi(0, 'CSWinbarDir',  { fg = c.fg_dim, bg = c.bg })
+  hi(0, 'CSWinbarFile', { fg = c.fg, bg = c.bg, bold = true })
+  hi(0, 'CSWinbarSym',  { fg = c.cyan, bg = c.bg })
+  hi(0, 'CSWinbarNav',  { fg = c.blue, bg = c.bg })
+  hi(0, 'CSWinbarWs',       { fg = c.cyan, bg = c.bg, bold = true })
+  hi(0, 'CSWinbarWsBranch', { fg = c.green, bg = c.bg })
+  hi(0, 'CSWinbarWsDirty',  { fg = c.warn, bg = c.bg })
 end
 
 local SKIP_FT = {
@@ -75,7 +76,7 @@ local SKIP_BT = { terminal = true, nofile = true, prompt = true, quickfix = true
 
 function M.setup()
   setup_highlights()
-  api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
   api.nvim_create_autocmd({ 'BufWinEnter', 'WinEnter' }, {
     callback = function()
       if SKIP_FT[vim.bo.filetype] or SKIP_BT[vim.bo.buftype] then

@@ -194,60 +194,70 @@ function M.reapply_groups()
   invalidate()
 end
 
-local BORDER = '#3b4261'  -- separator colour (tokyonight storm border)
-local RAIL   = '#0d0e16'  -- tab bar rail (darkest)
-local EDITOR = '#1a1b26'  -- editor background
-local ACTIVE = '#24283b'  -- active tab: lighter than editor → clearly pops above it
+-- Tab-bar layer colours, re-derived from the active palette in setup_group_hls
+-- (also read by icon_hl). Seeded with the dark palette so nothing is nil before
+-- the first apply.
+local BORDER, RAIL, EDITOR, ACTIVE   -- separator / rail / editor bg / active tab
+local SP_DIM, SP_SEL                 -- underline colours: inactive / active accent
 
 local function setup_group_hls()
   local hi = vim.api.nvim_set_hl
+  local c  = require('claudespace.theme').colors()
   _icon_hl_cache = {}   -- icon fg colours may change with the theme → rebuild lazily
-  for i, c in ipairs(GROUP_COLORS) do
-    hi(0, 'CSGroup'  .. i, { bg = c.bg, fg = c.fg, bold = true })
-    hi(0, 'CSGroupT' .. i, { bg = RAIL, fg = c.bg })
+
+  BORDER = c.border
+  RAIL   = c.bg_dark    -- tab bar rail (darkest layer)
+  EDITOR = c.bg
+  ACTIVE = c.bg         -- active tab shares the editor bg → floats above the rail
+  SP_DIM = c.border_dim
+  SP_SEL = c.accent
+
+  for i, gc in ipairs(GROUP_COLORS) do
+    hi(0, 'CSGroup'  .. i, { bg = gc.bg, fg = gc.fg, bold = true })
+    hi(0, 'CSGroupT' .. i, { bg = RAIL, fg = gc.bg })
   end
   hi(0, 'WinSeparator', { fg = BORDER })
 
   -- Rail: darkest layer; underline draws a thin border below the whole tab bar
-  hi(0, 'TabLineFill', { bg = RAIL, sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLineFill', { bg = RAIL, sp = SP_DIM, underline = true })
   -- Inactive: dim text, sunken into rail
-  hi(0, 'TabLine',     { bg = RAIL, fg = '#3b4166', sp = '#2a2d3e', underline = true })
-  -- Active: LIGHTER than editor → floats above it; blue accent replaces the grey separator
-  hi(0, 'TabLineSel',  { bg = ACTIVE, fg = '#c0caf5', bold = true,
-                         sp = '#7aa2f7', underline = true })
+  hi(0, 'TabLine',     { bg = RAIL, fg = c.fg_faint, sp = SP_DIM, underline = true })
+  -- Active: shares editor bg → floats above rail; accent replaces the grey separator
+  hi(0, 'TabLineSel',  { bg = ACTIVE, fg = c.fg, bold = true,
+                         sp = SP_SEL, underline = true })
 
-  hi(0, 'CSTabClose',       { bg = RAIL,   fg = '#252840' })
-  hi(0, 'CSTabCloseActive', { bg = ACTIVE, fg = '#414868' })
-  hi(0, 'CSTabModified',    { bg = ACTIVE, fg = '#e0af68' })
-  hi(0, 'CSTabModifiedNC',  { bg = RAIL,   fg = '#5c4a1e' })
+  hi(0, 'CSTabClose',       { bg = RAIL,   fg = c.fg_faint })
+  hi(0, 'CSTabCloseActive', { bg = ACTIVE, fg = c.fg_dim })
+  hi(0, 'CSTabModified',    { bg = ACTIVE, fg = c.git_change })
+  hi(0, 'CSTabModifiedNC',  { bg = RAIL,   fg = c.fg_dim })
 
   -- Recently-used inactive tab: brighter than the sunken default (recency gradient)
-  hi(0, 'TabLineRecent', { bg = RAIL, fg = '#828bb8', sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLineRecent', { bg = RAIL, fg = c.fg_dim, sp = SP_DIM, underline = true })
   -- Quick-jump number (Alt+1..5)
-  hi(0, 'CSTabNum',    { bg = RAIL,   fg = '#4a4f6a', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabNumSel', { bg = ACTIVE, fg = '#7aa2f7', sp = '#7aa2f7', underline = true })
+  hi(0, 'CSTabNum',    { bg = RAIL,   fg = c.fg_faint, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabNumSel', { bg = ACTIVE, fg = c.accent,   sp = SP_SEL, underline = true })
   -- Pill caps around the active tab (tab colour on the rail)
-  hi(0, 'CSTabCap', { bg = RAIL, fg = ACTIVE, sp = '#2a2d3e', underline = true })
+  hi(0, 'CSTabCap', { bg = RAIL, fg = ACTIVE, sp = SP_DIM, underline = true })
 
   -- Diagnostics badges (error / warning) on both tab backgrounds
-  hi(0, 'CSTabDiagErr',     { bg = RAIL,   fg = '#f7768e', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabDiagErrSel',  { bg = ACTIVE, fg = '#f7768e', sp = '#7aa2f7', underline = true })
-  hi(0, 'CSTabDiagWarn',    { bg = RAIL,   fg = '#e0af68', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabDiagWarnSel', { bg = ACTIVE, fg = '#e0af68', sp = '#7aa2f7', underline = true })
+  hi(0, 'CSTabDiagErr',     { bg = RAIL,   fg = c.error, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabDiagErrSel',  { bg = ACTIVE, fg = c.error, sp = SP_SEL, underline = true })
+  hi(0, 'CSTabDiagWarn',    { bg = RAIL,   fg = c.warn,  sp = SP_DIM, underline = true })
+  hi(0, 'CSTabDiagWarnSel', { bg = ACTIVE, fg = c.warn,  sp = SP_SEL, underline = true })
   -- Overflow marker (‹N / N›) when tabs don't fit
-  hi(0, 'CSTabMore', { bg = RAIL, fg = '#7aa2f7', sp = '#2a2d3e', underline = true })
+  hi(0, 'CSTabMore', { bg = RAIL, fg = c.accent, sp = SP_DIM, underline = true })
 
   -- Git-coloured tab names: new/untracked = green, modified = orange
-  hi(0, 'CSTabGitNew',    { bg = RAIL,   fg = '#9ece6a', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabGitNewSel', { bg = ACTIVE, fg = '#9ece6a', sp = '#7aa2f7', underline = true, bold = true })
-  hi(0, 'CSTabGitMod',    { bg = RAIL,   fg = '#e0af68', sp = '#2a2d3e', underline = true })
-  hi(0, 'CSTabGitModSel', { bg = ACTIVE, fg = '#e0af68', sp = '#7aa2f7', underline = true, bold = true })
+  hi(0, 'CSTabGitNew',    { bg = RAIL,   fg = c.git_add_fg, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabGitNewSel', { bg = ACTIVE, fg = c.git_add_fg, sp = SP_SEL, underline = true, bold = true })
+  hi(0, 'CSTabGitMod',    { bg = RAIL,   fg = c.git_change, sp = SP_DIM, underline = true })
+  hi(0, 'CSTabGitModSel', { bg = ACTIVE, fg = c.git_change, sp = SP_SEL, underline = true, bold = true })
   -- Pinned inactive tab: distinct background so it stands out even if the pin
   -- glyph is missing from the font (font-independent indicator).
-  hi(0, 'TabLinePinned', { bg = '#26344d', fg = '#c0caf5', sp = '#2a2d3e', underline = true })
+  hi(0, 'TabLinePinned', { bg = c.bg_sel, fg = c.fg, sp = SP_DIM, underline = true })
   -- Pin glyph (bright, bold)
-  hi(0, 'CSTabPin',    { bg = '#26344d', fg = '#e0af68', sp = '#2a2d3e', underline = true, bold = true })
-  hi(0, 'CSTabPinSel', { bg = ACTIVE,    fg = '#e0af68', sp = '#7aa2f7', underline = true, bold = true })
+  hi(0, 'CSTabPin',    { bg = c.bg_sel, fg = c.git_change, sp = SP_DIM, underline = true, bold = true })
+  hi(0, 'CSTabPinSel', { bg = ACTIVE,   fg = c.git_change, sp = SP_SEL, underline = true, bold = true })
 end
 
 local function group_hl(gid)
@@ -286,7 +296,7 @@ local function icon_hl(base_hl, sel)
     vim.api.nvim_set_hl(0, grp, {
       fg = fg,
       bg = sel and ACTIVE or RAIL,
-      sp = sel and '#7aa2f7' or '#2a2d3e',
+      sp = sel and SP_SEL or SP_DIM,
       underline = true,
     })
     _icon_hl_cache[grp] = true
@@ -1059,7 +1069,7 @@ end
 
 function M.setup()
   setup_group_hls()
-  vim.api.nvim_create_autocmd('ColorScheme', { callback = setup_group_hls })
+  vim.api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_group_hls })
 
   -- Keep state tables free of dead buffers.
   vim.api.nvim_create_autocmd({ 'BufDelete', 'BufWipeout' }, {

@@ -11,10 +11,11 @@ local S = { win = nil, buf = nil, ranges = {} }  -- ranges: { {s, e, session_id}
 
 local function set_hl()
   local hl = api.nvim_set_hl
-  hl(0, 'CSBarBg',       { bg = '#16161e' })
-  hl(0, 'CSBarActive',   { bg = '#2d3149', fg = '#7dcfff', bold = true })
-  hl(0, 'CSBarInactive', { bg = '#16161e', fg = '#828bb8' })
-  hl(0, 'CSBarDim',      { bg = '#16161e', fg = '#3b4261' })
+  local c  = require('claudespace.theme').colors()
+  hl(0, 'CSBarBg',       { bg = c.bg_dark })
+  hl(0, 'CSBarActive',   { bg = c.bg_sel, fg = c.cyan, bold = true })
+  hl(0, 'CSBarInactive', { bg = c.bg_dark, fg = c.fg_dim })
+  hl(0, 'CSBarDim',      { bg = c.bg_dark, fg = c.fg_faint })
 end
 
 local function sessions() return require('claudespace.claude.sessions') end
@@ -95,7 +96,7 @@ end
 
 function M.setup()
   set_hl()
-  api.nvim_create_autocmd('ColorScheme', { callback = set_hl })
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = set_hl })
   -- Rebuild when sessions or focus change, or the UI resizes.
   api.nvim_create_autocmd(
     { 'BufEnter', 'BufWinEnter', 'TermClose', 'BufDelete', 'VimResized' },

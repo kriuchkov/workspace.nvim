@@ -39,6 +39,8 @@ else
     "claudespace.options"
     "claudespace.keymaps"
     "claudespace.health"
+    "claudespace.theme"
+    "claudespace.theme.palette"
     "claudespace.shell"
     "claudespace.repos"
     "claudespace.gotofile"

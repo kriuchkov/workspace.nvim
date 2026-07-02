@@ -820,33 +820,34 @@ end
 
 local function setup_highlights()
   local hi = api.nvim_set_hl
+  local c  = require('claudespace.theme').colors()
   -- Header
-  hi(0, 'CSTreeRoot',     { fg = '#c0caf5', bold = true })
-  hi(0, 'CSTreePath',     { fg = '#3b4166' })
+  hi(0, 'CSTreeRoot',     { fg = c.fg, bold = true })
+  hi(0, 'CSTreePath',     { fg = c.fg_dim })
   -- Tree entries
-  hi(0, 'CSTreeGuide',    { fg = '#24283b' })  -- structural chars: │ ├ └ connectors
-  hi(0, 'CSTreeDirIcon',  { fg = '#7aa2f7' })
-  hi(0, 'CSTreeDir',      { fg = '#7aa2f7', bold = true })
-  hi(0, 'CSTreeFile',     { fg = '#9aa5ce' })
+  hi(0, 'CSTreeGuide',    { fg = c.border })  -- structural chars: │ ├ └ connectors
+  hi(0, 'CSTreeDirIcon',  { fg = c.blue })
+  hi(0, 'CSTreeDir',      { fg = c.blue, bold = true })
+  hi(0, 'CSTreeFile',     { fg = c.fg })
   -- Repo roots: a cube glyph + status-coloured name; active repo stands out.
-  hi(0, 'CSTreeRepoGlyph',  { fg = '#565f89' })
-  hi(0, 'CSTreeRepoActive', { fg = '#7dcfff', bold = true })
-  hi(0, 'CSTreeRepoClean',  { fg = '#c0caf5', bold = true })
-  hi(0, 'CSTreeRepoDirty',  { fg = '#e0af68', bold = true })
-  hi(0, 'CSTreeRepoAhead',  { fg = '#9ece6a', bold = true })
-  hi(0, 'CSTreeFileIcon', { fg = '#3d4574' })  -- single subdued colour for all file icons
+  hi(0, 'CSTreeRepoGlyph',  { fg = c.fg_dim })
+  hi(0, 'CSTreeRepoActive', { fg = c.cyan, bold = true })
+  hi(0, 'CSTreeRepoClean',  { fg = c.fg, bold = true })
+  hi(0, 'CSTreeRepoDirty',  { fg = c.warn, bold = true })
+  hi(0, 'CSTreeRepoAhead',  { fg = c.green, bold = true })
+  hi(0, 'CSTreeFileIcon', { fg = c.fg_dim })  -- single subdued colour for all file icons
   -- Git status
-  hi(0, 'CSTreeGitMod',  { fg = '#e0af68' })
-  hi(0, 'CSTreeGitAdd',  { fg = '#9ece6a' })
-  hi(0, 'CSTreeGitDel',  { fg = '#f7768e' })
-  hi(0, 'CSTreeGitNew',  { fg = '#73daca' })
-  hi(0, 'CSTreeGitIgn',  { fg = '#3b4166' })
-  hi(0, 'CSTreeGitCon',  { fg = '#f7768e', bold = true })
+  hi(0, 'CSTreeGitMod',  { fg = c.git_change })
+  hi(0, 'CSTreeGitAdd',  { fg = c.git_add_fg })
+  hi(0, 'CSTreeGitDel',  { fg = c.git_delete })
+  hi(0, 'CSTreeGitNew',  { fg = c.cyan })
+  hi(0, 'CSTreeGitIgn',  { fg = c.fg_faint })
+  hi(0, 'CSTreeGitCon',  { fg = c.red, bold = true })
 end
 
 function M.setup()
   setup_highlights()
-  api.nvim_create_autocmd('ColorScheme', { callback = setup_highlights })
+  api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
 
   -- Refresh diagnostic badges when diagnostics change. Debounced (300ms) — LSP
   -- pushes diagnostics rapidly while typing and a full re-render walks the FS.

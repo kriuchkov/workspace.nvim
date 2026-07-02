@@ -419,7 +419,9 @@ function Highlight.start()
     callback = function() Highlight.attach() end })
   vim.api.nvim_create_autocmd('WinScrolled', { group = grp,
     callback = function() Highlight.update() end })
-  vim.api.nvim_create_autocmd('ColorScheme', { group = grp,
+  vim.api.nvim_create_autocmd({ 'ColorScheme' }, { group = grp,
+    callback = function() vim.defer_fn(Config.colors, 10) end })
+  vim.api.nvim_create_autocmd('User', { group = grp, pattern = 'CSThemeApplied',
     callback = function() vim.defer_fn(Config.colors, 10) end })
   for _, win in pairs(vim.api.nvim_list_wins()) do Highlight.attach(win) end
 end
