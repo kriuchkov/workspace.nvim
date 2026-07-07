@@ -92,13 +92,13 @@ local function request(win)
   if vim.bo[buf].buftype ~= '' then return end
 
   local clients = vim.tbl_filter(function(c)
-    return c.supports_method('textDocument/documentSymbol')
+    return c:supports_method('textDocument/documentSymbol')
   end, vim.lsp.get_clients({ bufnr = buf }))
 
   if #clients == 0 then S.symbols = {}; render(); return end
 
   local params = { textDocument = vim.lsp.util.make_text_document_params(buf) }
-  clients[1].request('textDocument/documentSymbol', params, function(err, result)
+  clients[1]:request('textDocument/documentSymbol', params, function(err, result)
     if not (S.win and api.nvim_win_is_valid(S.win)) then return end
     S.symbols = (err or not result) and {} or flatten(result)
     render()

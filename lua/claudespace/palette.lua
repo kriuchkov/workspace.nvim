@@ -6,6 +6,8 @@ local ACTIONS = {
   -- File
   { group = 'File',      label = 'Find files',              keys = '<leader>ff', action = function() vim.cmd 'Telescope find_files' end },
   { group = 'File',      label = 'Live grep',               keys = '<leader>fg', action = function() vim.cmd 'Telescope live_grep' end },
+  { group = 'File',      label = 'Live grep (glob scoped)',  keys = '<leader>fG', action = function() require('claudespace.search').live_grep_glob() end },
+  { group = 'File',      label = 'Live grep (active repo)',  keys = '<leader>fR', action = function() require('claudespace.search').live_grep_repo() end },
   { group = 'File',      label = 'Recent files',            keys = '<leader>fr', action = function() vim.cmd 'Telescope oldfiles' end },
   { group = 'File',      label = 'Buffers',                 keys = '<leader>fb', action = function() vim.cmd 'Telescope buffers' end },
   { group = 'File',      label = 'Search/replace (word)',   keys = '<leader>sr', action = function() require('grug-far').open { prefills = { search = vim.fn.expand '<cword>' } } end },

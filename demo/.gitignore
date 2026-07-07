@@ -1,0 +1,7 @@
+# Rust
+rust/target/
+rust/Cargo.lock
+
+# Go
+go/demo
+go/demo.exe

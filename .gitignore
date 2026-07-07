@@ -2,3 +2,16 @@
 CLAUDE.md
 lua/custom/
 .DS_Store
+
+# Local demo recording artifacts (the rendered docs/demo.gif is what ships)
+demo.cast
+tour
+
+# Personal working notes / drafts (blog posts, etc.) — not part of the project
+_works/
+
+# Demo projects intentionally ship their own CLAUDE.md and .claude/commands
+# (they showcase those features), so re-include them at any depth.
+!demo/**/CLAUDE.md
+!demo/**/.claude
+!demo/**/.claude/**

@@ -121,7 +121,8 @@ local function capture_id(sess)
   end, 3000)
 end
 
-local ensure_editor_win = require('claudespace.claude.util').ensure_editor_win
+local util = require('claudespace.claude.util')
+local ensure_editor_win = util.ensure_editor_win
 
 -- Delete buf if it's a listed empty [No Name] buffer (cleanup after M.new replaces it).
 local function wipe_empty(buf)
@@ -167,12 +168,8 @@ function M.new(cwd, flag)
   sess.job_id = job_id
   capture_id(sess)
 
-  -- Inject workspace context once claude CLI has booted (~2.5s)
-  vim.defer_fn(function()
-    if api.nvim_buf_is_valid(buf) then
-      require('claudespace.claude.context').inject_to_job(job_id, cwd)
-    end
-  end, 2500)
+  -- No auto-injection of @.claude/WORKSPACE.md on start — it pre-fills the prompt
+  -- unasked. Use <leader>ci (context.inject) to push it into a session on demand.
 
   vim.schedule(function()
     if api.nvim_buf_is_valid(buf) then name_buf(buf, name) end
@@ -397,7 +394,7 @@ local function start_background(sess, flag)
     relative = 'editor', width = 80, height = 24,
     row = 0, col = 0, focusable = false, style = 'minimal', noautocmd = true,
   })
-  fn.termopen(claude_cmd(flag or ' --continue'), { cwd = sess.cwd })
+  sess.job_id = fn.termopen(claude_cmd(flag or ' --continue'), { cwd = sess.cwd })
   -- Close the float — process keeps running in the buffer
   pcall(api.nvim_win_close, tmp_win, true)
   pcall(api.nvim_set_current_win, orig_win)
@@ -464,6 +461,248 @@ function M.active()     return sessions[active_id] end
 function M.active_id_() return active_id end
 function M.get(id)      return sessions[id] end
 
+-- ── Past sessions (on-disk history) ───────────────────────────────────────────
+-- The CLI has no machine-readable "list sessions", so read the transcript files
+-- directly: id from the <uuid>.jsonl filename, a title from the `custom-title`
+-- line (or the first user message), recency from the mtime. Resume = --resume id.
+
+-- Harness-injected user turns that are not real messages: <command-*>/<task-*>/
+-- <local-command-*> tags, compaction continuations, and local-command caveats.
+local function is_noise(text)
+  return text:match('^<') ~= nil
+      or text:match('^This session is being continued') ~= nil
+      or text:match('^Caveat:') ~= nil
+end
+
+-- Real conversational text for a transcript line → (role, text), or nil for tool
+-- results, meta injections, and (for user turns) harness noise.
+local function message_text(ev)
+  if type(ev) ~= 'table' or not ev.message then return nil end
+  if ev.isMeta or ev.toolUseResult then return nil end     -- meta / tool-result turn
+  local role = ev.message.role or ev.type
+  local c    = ev.message.content
+  local text
+  if type(c) == 'string' then
+    text = c
+  elseif type(c) == 'table' then
+    local parts = {}
+    for _, b in ipairs(c) do if b.type == 'text' and b.text then parts[#parts + 1] = b.text end end
+    text = #parts > 0 and table.concat(parts, '\n') or nil
+  end
+  if not text then return nil end
+  text = vim.trim(text)
+  if text == '' then return nil end
+  if role == 'user' and is_noise(text) then return nil end  -- only user text is tag-noise
+  return role, text
+end
+
+-- Titles/transcripts are re-read on every history() open and delete-refresh, and
+-- transcripts on every picker cursor move. Memoise by path+mtime — a session file
+-- only changes when resumed or renamed, both of which bump the mtime.
+local _title_cache, _transcript_cache = {}, {}
+local _transcript_order = {}          -- insertion order for the transcript LRU
+local TRANSCRIPT_CACHE_MAX = 12
+
+local function session_title(path)
+  local mt = fn.getftime(path)
+  local c  = _title_cache[path]
+  if c and c.mtime == mt then return c.title end
+
+  local title
+  local f = io.open(path)
+  if f then
+    local n = 0
+    for line in f:lines() do
+      n = n + 1
+      if n > 80 then break end
+      local ok, ev = pcall(vim.json.decode, line)
+      if ok and type(ev) == 'table' then
+        if ev.type == 'custom-title' and ev.customTitle then title = ev.customTitle; break end
+        local role, text = message_text(ev)
+        if role == 'user' then title = text; break end
+      end
+    end
+    f:close()
+  end
+  _title_cache[path] = { mtime = mt, title = title }
+  return title
+end
+
+local function rel_time(t)
+  local d = os.time() - t
+  if d < 60    then return d .. 's' end
+  if d < 3600  then return math.floor(d / 60) .. 'm' end
+  if d < 86400 then return math.floor(d / 3600) .. 'h' end
+  return math.floor(d / 86400) .. 'd'
+end
+
+-- Every project dir worth scanning: the workspace repos and the cwd.
+local function history_cwds()
+  local set, list = {}, {}
+  local function add(c) if c and c ~= '' and not set[c] then set[c] = true; list[#list + 1] = c end end
+  local ok, repos = pcall(require, 'claudespace.repos')
+  if ok then
+    add(repos.root and repos.root())
+    for _, m in ipairs(repos.list and repos.list() or {}) do add(m.abspath) end
+  end
+  add(fn.getcwd())
+  return list
+end
+
+-- Past conversations across the workspace, newest first.
+function M.past_sessions()
+  local seen, out = {}, {}
+  for _, cwd in ipairs(history_cwds()) do
+    for _, f in ipairs(fn.glob(project_dir(cwd) .. '/*.jsonl', true, true)) do
+      local id = fn.fnamemodify(f, ':t:r')
+      if valid_id(id) and not seen[f] then
+        seen[f] = true
+        out[#out + 1] = {
+          id = id, cwd = cwd, path = f, mtime = fn.getftime(f),
+          title = session_title(f) or '(untitled)',
+          repo  = fn.fnamemodify(cwd, ':t'),
+        }
+      end
+    end
+  end
+  table.sort(out, function(a, b) return a.mtime > b.mtime end)
+  return out
+end
+
+-- Render a transcript as markdown: "### You" / "### Claude" blocks, harness noise
+-- (tool results, meta turns, command tags) filtered out via message_text.
+-- Memoised by path+mtime — the picker re-reads on every cursor move otherwise.
+local function transcript_lines(path)
+  local mt = fn.getftime(path)
+  local c  = _transcript_cache[path]
+  if c and c.mtime == mt then return c.lines end
+
+  local lines = {}
+  local f = io.open(path)
+  if not f then return { '(cannot read transcript)' } end
+  for line in f:lines() do
+    local ok, ev = pcall(vim.json.decode, line)
+    if ok then
+      local role, text = message_text(ev)
+      if text then
+        lines[#lines + 1] = '### ' .. (role == 'user' and 'You' or 'Claude')
+        for _, l in ipairs(vim.split(text, '\n')) do lines[#lines + 1] = l end
+        lines[#lines + 1] = ''
+      end
+    end
+  end
+  f:close()
+  if #lines == 0 then lines = { '(empty transcript)' } end
+  -- Cap the cache: transcripts can be thousands of lines, so keep only the most
+  -- recently read few rather than growing unbounded for the whole nvim session.
+  if not _transcript_cache[path] then
+    _transcript_order[#_transcript_order + 1] = path
+    while #_transcript_order > TRANSCRIPT_CACHE_MAX do
+      _transcript_cache[table.remove(_transcript_order, 1)] = nil
+    end
+  end
+  _transcript_cache[path] = { mtime = mt, lines = lines }
+  return lines
+end
+
+local function view_transcript(entry)
+  util.read_float(
+    transcript_lines(entry.path), ' ' .. fn.strcharpart(entry.title, 0, 50) .. ' ', 'markdown',
+    { at_end = true })
+end
+
+-- Guard: only ever delete files under ~/.claude/projects (they come from our own
+-- glob, but keep the destructive op defensive).
+local function delete_session(entry)
+  if not entry.path:match('/%.claude/projects/') then return false end
+  if os.remove(entry.path) == nil then return false end
+  _title_cache[entry.path], _transcript_cache[entry.path] = nil, nil  -- evict cached data
+  return true
+end
+
+-- Browse past sessions with a live transcript preview.
+-- ⏎ resume · C-o transcript float · C-d delete.
+function M.history()
+  local function label(e)
+    -- strcharpart, not :sub, so a multibyte title isn't cut mid-character.
+    return ('%-4s [%s]  %s'):format(rel_time(e.mtime), e.repo,
+      fn.strcharpart(e.title:gsub('%s+', ' '), 0, 80))
+  end
+  local function resume(e) M.new(e.cwd, ' --resume ' .. e.id) end
+
+  if #M.past_sessions() == 0 then
+    vim.notify('No past Claude sessions found', vim.log.levels.WARN)
+    return
+  end
+
+  local ok, pickers = pcall(require, 'telescope.pickers')
+  if not ok then
+    vim.ui.select(M.past_sessions(), { prompt = 'Claude sessions', format_item = label },
+      function(e) if e then resume(e) end end)
+    return
+  end
+  local finders    = require 'telescope.finders'
+  local conf       = require('telescope.config').values
+  local actions    = require 'telescope.actions'
+  local astate     = require 'telescope.actions.state'
+  local previewers = require 'telescope.previewers'
+
+  local function make_finder()
+    return finders.new_table {
+      results = M.past_sessions(),
+      entry_maker = function(e)
+        return { value = e, display = label(e), ordinal = e.title .. ' ' .. e.repo }
+      end,
+    }
+  end
+
+  pickers.new({}, {
+    prompt_title = 'Claude sessions  (⏎ resume · C-o transcript · C-d delete)',
+    finder = make_finder(),
+    sorter = conf.generic_sorter {},
+    previewer = previewers.new_buffer_previewer {
+      title = 'Transcript',
+      define_preview = function(self, entry)
+        local lines = transcript_lines(entry.value.path)
+        vim.api.nvim_buf_set_lines(self.state.bufnr, 0, -1, false, lines)
+        vim.bo[self.state.bufnr].filetype = 'markdown'
+        -- Scroll to the newest message (the end) rather than the first line.
+        local win = self.state.winid
+        if win and vim.api.nvim_win_is_valid(win) then
+          pcall(vim.api.nvim_win_set_cursor, win, { #lines, 0 })
+          vim.api.nvim_win_call(win, function() vim.cmd 'normal! zb' end)
+        end
+      end,
+    },
+    attach_mappings = function(pb, map)
+      actions.select_default:replace(function()
+        local e = astate.get_selected_entry(); actions.close(pb)
+        if e then resume(e.value) end
+      end)
+      map({ 'i', 'n' }, '<C-o>', function()
+        local e = astate.get_selected_entry(); actions.close(pb)
+        if e then view_transcript(e.value) end
+      end)
+      map({ 'i', 'n' }, '<C-d>', function()
+        local e = astate.get_selected_entry()
+        if not e then return end
+        if fn.confirm('Delete session "' .. e.value.title:sub(1, 40) .. '"?', '&Yes\n&No', 2) ~= 1 then
+          return
+        end
+        if delete_session(e.value) then
+          astate.get_current_picker(pb):refresh(make_finder(), { reset_prompt = false })
+        else
+          vim.notify('Could not delete session', vim.log.levels.ERROR)
+        end
+      end)
+      return true
+    end,
+  }):find()
+end
+
+-- Background slash-command running now lives in claudespace.claude.runner (the
+-- structured stream-json runner); this module only owns interactive sessions.
+
 -- ── Setup ─────────────────────────────────────────────────────────────────────
 
 function M.setup()
@@ -519,6 +758,11 @@ function M.setup()
 
   map('n', '<leader>cs', M.pick,
     { desc = 'Claude: pick session', silent = true })
+
+  map('n', '<leader>cH', M.history,
+    { desc = 'Claude: past session history', silent = true })
+  api.nvim_create_user_command('ClaudeHistory', function() M.history() end,
+    { desc = 'Browse past Claude sessions' })
 
   map('n', '<leader>cR', M.rename_current,
     { desc = 'Claude: rename session', silent = true })

@@ -33,6 +33,7 @@ if ok_wk then
       { '<leader>d',  group = 'Debug' },
       { '<leader>r',  group = 'Run/Test' },
       { '<leader>m',  group = 'Marks' },
+      { '<leader>?',  desc = 'Keymap cheatsheet' },
       -- Claude sub-groups for discoverability
       { '<leader>cf', desc = 'Claude: fix diagnostic' },
       { '<leader>ck', desc = 'Claude: explain code' },
@@ -42,6 +43,8 @@ if ok_wk then
       { '<leader>c!', desc = 'Claude: shell command' },
       { '<leader>co', desc = 'Claude: generate docs' },
       { '<leader>cE', desc = 'Claude: multi-file compose' },
+      { '<leader>cx', desc = 'Claude: cancel running jobs' },
+      { '<leader>cH', desc = 'Claude: past session history' },
     })
   end
 end

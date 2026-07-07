@@ -4,6 +4,7 @@ local map = vim.keymap.set
 map({ 'n', 'i', 'v' }, '<C-s>', '<cmd>w<CR><Esc>', { desc = 'Save' })
 map('n', '<leader>q', '<cmd>q<CR>', { desc = 'Quit' })
 map('n', '<leader>Q', '<cmd>qa<CR>', { desc = 'Quit all' })
+map('n', '<leader>?', function() require('claudespace.cheatsheet').show() end, { desc = 'Keymap cheatsheet' })
 
 -- Window navigation
 map('n', '<C-h>', '<C-w>h', { desc = 'Window left' })

@@ -1,0 +1,12 @@
+services:
+  vega:
+    build: ../services/vega
+    ports: ["8080:8080"]
+  lyra:
+    build: ../services/lyra
+  nova:
+    build: ../services/nova
+  aurora:
+    build: ../frontends/aurora
+    ports: ["3000:3000"]
+    depends_on: [vega]
