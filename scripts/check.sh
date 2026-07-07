@@ -50,6 +50,7 @@ else
     "claudespace.claude.bottombar"
     "claudespace.claude.util"
     "claudespace.claude.sessions"
+    "claudespace.claude.commands"
     "claudespace.claude.dashboard"
     "claudespace.claude.agents"
     "claudespace.claude.status"

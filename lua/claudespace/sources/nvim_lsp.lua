@@ -11,9 +11,15 @@ local source = {}
 local IS_011 = vim.fn.has 'nvim-0.11' == 1
 local get_clients = vim.lsp.get_clients or vim.lsp.get_active_clients
 
+-- Neovim 0.11+ made these client methods (self-first); older versions call them
+-- bare. Never use `a and b or c` here: is_stopped() returns a boolean, so a false
+-- result would fall through to the deprecated bare call.
 local function client_call(client, method, ...)
   local fn = client[method]
-  return IS_011 and fn(client, ...) or fn(...)
+  if IS_011 then
+    return fn(client, ...)
+  end
+  return fn(...)
 end
 
 function source.new(client)

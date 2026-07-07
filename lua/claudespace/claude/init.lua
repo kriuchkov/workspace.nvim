@@ -4,6 +4,12 @@ require 'claudespace.claude.fix'
 require 'claudespace.claude.assist'
 require 'claudespace.claude.agents'
 require 'claudespace.claude.sessions'
+require('claudespace.claude.runner').setup()
+
+-- Custom-command runner (.claude/commands/*.md → background session)
+vim.keymap.set('n', '<leader>cC', function()
+  require('claudespace.claude.commands').pick()
+end, { desc = 'Claude: run a command (.claude/commands)' })
 
 -- CLAUDE.md management
 vim.keymap.set('n', '<leader>cm', function()

@@ -594,4 +594,57 @@ M.jump_prev = Jump.prev
 M.enable    = Highlight.start
 M.disable   = Highlight.stop
 
+-- ── claudespace: workspace / repo-scoped TODO listing ─────────────────────────
+
+-- Directories to search: every repo in a multi-repo workspace, else the active
+-- repo's root; falls back to the cwd when claudespace.repos isn't available.
+local function scope_dirs()
+  local ok, repos = pcall(require, 'claudespace.repos')
+  if ok and repos.list then
+    if repos.is_multi and repos.is_multi() then
+      local dirs = {}
+      for _, m in ipairs(repos.list() or {}) do
+        if m.abspath then dirs[#dirs + 1] = m.abspath end
+      end
+      if #dirs > 0 then return dirs, true end
+    end
+    local a = repos.active and repos.active()
+    if a and a.abspath then return { a.abspath }, false end
+  end
+  return { vim.fn.getcwd() }, false
+end
+
+-- List TODO/FIX/HACK/… comments across the current workspace (all repos) or, in
+-- a single repo, that repo's root. Prefers a Telescope picker to match the other
+-- activity-bar actions; falls back to a quickfix list when Telescope is absent.
+function M.workspace(opts)
+  opts = opts or {}
+  local dirs, multi = scope_dirs()
+
+  local ok = pcall(function()
+    require('telescope').extensions['todo-comments'].todo(
+      vim.tbl_extend('force', {
+        search_dirs   = dirs,
+        prompt_title  = multi and 'Workspace TODOs' or 'Repo TODOs',
+      }, opts))
+  end)
+  if ok then return end
+
+  -- Quickfix fallback: search each dir, merge, then open one list.
+  local all, remaining = {}, #dirs
+  for _, dir in ipairs(dirs) do
+    Search.search(function(results)
+      vim.list_extend(all, results)
+      remaining = remaining - 1
+      if remaining == 0 then
+        if #all == 0 then Util.warn 'no todos found'; return end
+        vim.fn.setqflist({}, ' ', { title = 'Todo', items = all })
+        vim.cmd 'copen'
+        local win = vim.fn.getqflist { winid = true }
+        if win.winid ~= 0 then Highlight.attach(win.winid, true) end
+      end
+    end, { cwd = dir, disable_not_found_warnings = true })
+  end
+end
+
 return M

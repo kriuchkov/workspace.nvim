@@ -48,6 +48,24 @@ require('claudespace.navic').setup {
   },
 }
 
+-- ── Goto fallbacks (global) ──────────────────────────────────────────────────
+-- Buffer-local gd/gD (set on LspAttach below) take precedence in LSP buffers.
+-- Everywhere else (Claude terminals, plain buffers) these fire instead of the
+-- built-in gd/gD, whose whole-word search spams "E486: Pattern not found".
+local function goto_or_notify(lsp_fn, what)
+  return function()
+    if next(vim.lsp.get_clients { bufnr = 0 }) then
+      lsp_fn()
+    else
+      vim.notify('No LSP here — ' .. what .. ' unavailable', vim.log.levels.WARN)
+    end
+  end
+end
+map('n', 'gd', goto_or_notify(vim.lsp.buf.definition,  'definition'),
+  { silent = true, desc = 'LSP: definition (or notify)' })
+map('n', 'gD', goto_or_notify(vim.lsp.buf.declaration, 'declaration'),
+  { silent = true, desc = 'LSP: declaration (or notify)' })
+
 -- ── LSP keymaps + per-buffer features ────────────────────────────────────────
 -- Applied once when an LSP client attaches to a buffer.
 

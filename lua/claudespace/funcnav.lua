@@ -190,11 +190,11 @@ end
 function M.pick()
   local buf = vim.api.nvim_get_current_buf()
   local clients = vim.tbl_filter(function(c)
-    return c.supports_method('textDocument/documentSymbol')
+    return c:supports_method('textDocument/documentSymbol')
   end, vim.lsp.get_clients({ bufnr = buf }))
   if #clients == 0 then pick_treesitter(); return end
   local params = { textDocument = vim.lsp.util.make_text_document_params(buf) }
-  clients[1].request('textDocument/documentSymbol', params, function(err, result)
+  clients[1]:request('textDocument/documentSymbol', params, function(err, result)
     if err or not result then pick_treesitter(); return end
     show(flatten_lsp(result))
   end, buf)

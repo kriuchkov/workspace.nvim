@@ -17,14 +17,6 @@ local function diag_errors()
   return e > 0 and e or nil
 end
 
-local function session_count()
-  local ok, s = pcall(require, 'claudespace.claude.sessions')
-  if not ok or not s.list then return nil end
-  local ok2, l = pcall(s.list)
-  if not ok2 or not l or #l == 0 then return nil end
-  return #l
-end
-
 -- ── Views ─────────────────────────────────────────────────────────────────────
 -- kind 'panel'  = hosted to the right of the bar (mutually exclusive)
 -- kind 'launch' = one-shot action (float / picker / toggle)
@@ -37,7 +29,7 @@ local VIEWS = {
     open  = function() require('claudespace.filetree').open(nil, S.ab_win) end,
     close = function() require('claudespace.filetree').close() end },
   { id = 'search', icon = ic(0xf002), label = 'Search', kind = 'launch',
-    run = function() pcall(vim.cmd, 'Telescope live_grep') end },
+    run = function() require('claudespace.search').live_grep() end },
   { id = 'git', icon = ic(0xf126), label = 'Git', kind = 'panel',
     open  = function() require('claudespace.git_ui').open(S.ab_win) end,
     close = function() require('claudespace.git_ui').close() end },
@@ -53,15 +45,21 @@ local VIEWS = {
   { id = 'tests', icon = ic(0xf0c3), label = 'Tests', kind = 'launch',
     run = function() require('claudespace.test_ui').run() end },
   { id = 'todo', icon = ic(0xf046), label = 'TODO', kind = 'launch',
-    run = function() pcall(vim.cmd, 'TodoTrouble') end },
+    run = function() require('claudespace.todo_comments').workspace() end },
   { id = 'marks', icon = ic(0xf02e), label = 'Marks', kind = 'launch',
     run = function() require('claudespace.marks').show() end },
-  { id = 'claude', icon = ic(0xf075), label = 'Claude', kind = 'launch',
-    run = function() require('claudespace.claude.dashboard').open() end,
-    badge = session_count, badge_hl = 'CSAbBadgeInfo' },
+  { id = 'tasks', icon = ic(0xf0ae), label = 'Tasks', kind = 'launch',
+    run = function() require('claudespace.claude.commands').pick() end },
+  { id = 'sessions', icon = ic(0xf075), label = 'Sessions', kind = 'launch',
+    run = function() require('claudespace.claude.sessions').history() end },
 }
 local BY_ID, ORDER = {}, {}
 for i, v in ipairs(VIEWS) do BY_ID[v.id] = v; ORDER[i] = v.id end
+
+-- Per-view selection keys (what you press) and their small superscript glyphs
+-- (what's shown next to the icon — subtler than full-size digits).
+local HINT_KEYS  = { '1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '-' }
+local HINT_GLYPH = { '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹', '⁰', '⁻' }
 
 local SUP = { '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' }
 local function badge_str(n)
@@ -81,6 +79,7 @@ local function setup_highlights()
   hi(0, 'CSAbBadgeInfo', { bg = c.bg_dark, fg = c.cyan, bold = true })
   hi(0, 'CSAbTip',       { bg = c.bg_sel, fg = c.fg, bold = true })
   hi(0, 'CSAbSel',       { bg = c.bg_sel })   -- cursor row when the bar is focused
+  hi(0, 'CSAbKey',       { bg = c.bg_dark, fg = c.fg_dim })  -- hotkey hint: pale, subtle
 end
 
 local function render_bar()
@@ -93,13 +92,20 @@ local function render_bar()
      and api.nvim_get_current_win() == S.ab_win then
     cur_line = api.nvim_win_get_cursor(S.ab_win)[1]
   end
-  local lines, badges = {}, {}
+  local lines, extras = {}, {}
   for i, v in ipairs(VIEWS) do
-    local b = v.badge and badge_str(v.badge())
+    local key = S.show_keys and HINT_GLYPH[i] or nil
     local marked = (S.active == v.id) or (cur_line == i)
     local prefix = marked and '▎' or ' '
-    lines[i] = prefix .. v.icon .. (b or '')
-    badges[i] = b and { col = #(prefix .. v.icon), hl = v.badge_hl } or nil
+    if key then
+      -- A space sets the hotkey off from the icon (only shown on ? reveal).
+      lines[i]  = prefix .. v.icon .. ' ' .. key
+      extras[i] = { col = #(prefix .. v.icon .. ' '), hl = 'CSAbKey' }
+    else
+      local b = v.badge and badge_str(v.badge())
+      lines[i]  = prefix .. v.icon .. (b or '')
+      if b then extras[i] = { col = #(prefix .. v.icon), hl = v.badge_hl } end
+    end
   end
   vim.bo[S.ab_buf].modifiable = true
   api.nvim_buf_set_lines(S.ab_buf, 0, -1, false, lines)
@@ -108,8 +114,8 @@ local function render_bar()
   for i, v in ipairs(VIEWS) do
     local grp = (S.active == v.id or cur_line == i) and 'CSAbActive' or 'CSAbInactive'
     api.nvim_buf_add_highlight(S.ab_buf, NS, grp, i - 1, 0, -1)
-    if badges[i] then
-      api.nvim_buf_add_highlight(S.ab_buf, NS, badges[i].hl, i - 1, badges[i].col, -1)
+    if extras[i] then
+      api.nvim_buf_add_highlight(S.ab_buf, NS, extras[i].hl, i - 1, extras[i].col, -1)
     end
   end
 end
@@ -169,9 +175,11 @@ local function ensure_bar()
   local k = vim.keymap.set
   k('n', '<CR>', function() M.select(ORDER[api.nvim_win_get_cursor(0)[1]]) end, o)
   k('n', '<LeftRelease>', function() M.select(ORDER[api.nvim_win_get_cursor(0)[1]]) end, o)
-  for i = 1, math.min(#ORDER, 9) do
-    k('n', tostring(i), function() M.select(ORDER[i]) end, o)
+  for i = 1, math.min(#ORDER, #HINT_KEYS) do
+    k('n', HINT_KEYS[i], function() M.select(ORDER[i]) end, o)
   end
+  -- ? reveals/hides the per-icon hotkeys (off by default, even when focused).
+  k('n', '?', function() S.show_keys = not S.show_keys; render_bar() end, o)
   k('n', 'q', M.close, o)
 
   api.nvim_create_autocmd('WinClosed', {
@@ -184,7 +192,9 @@ local function ensure_bar()
   })
   api.nvim_create_autocmd({ 'WinLeave', 'BufLeave' }, {
     -- schedule so focus has actually left before we re-render (strip clears)
-    buffer = S.ab_buf, callback = function() hide_tip(); vim.schedule(render_bar) end,
+    buffer = S.ab_buf, callback = function()
+      hide_tip(); S.show_keys = false; vim.schedule(render_bar)
+    end,
   })
   render_bar()
 end
@@ -192,6 +202,7 @@ end
 -- Select a view: panels toggle/switch in the slot; launchers just run.
 function M.select(id)
   ensure_bar()
+  S.show_keys = false   -- hide the hotkey hints once a view is chosen
   local v = BY_ID[id]
   if not v then return end
   if v.kind == 'launch' then

@@ -1,0 +1,5 @@
+{
+  "name": "orbit",
+  "include": ["services/*", "packages/*", "frontends/*", "deploy"],
+  "pin": ["services/vega"]
+}

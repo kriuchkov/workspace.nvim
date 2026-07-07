@@ -41,8 +41,18 @@ function M.render()
     hl(t, 'StatusLine', '  ')
   end
 
-  -- Filename + flags
-  local fname = bt == 'terminal' and vim.b.term_title or vim.fn.expand '%:t'
+  -- Filename + flags. Claude session terminals show their session name (not the
+  -- raw term://… path); other terminals fall back to the terminal title.
+  local fname
+  if vim.b.cs_session_id then
+    local ok, sess = pcall(require, 'claudespace.claude.sessions')
+    local s = ok and sess.get and sess.get(vim.b.cs_session_id)
+    fname = '󰭹 ' .. ((s and s.name) or 'Claude')
+  elseif bt == 'terminal' then
+    fname = vim.b.term_title or ''
+  else
+    fname = vim.fn.expand '%:t'
+  end
   if fname == '' then fname = '[No Name]' end
   hl(t, 'CSFile', fname)
   if vim.bo.modified  then hl(t, 'CSMod',  ' ●') end
@@ -80,6 +90,18 @@ function M.render()
   local ok_ws, ws = pcall(require, 'claudespace.workspace')
   if ok_ws and ws._current then
     hl(t, 'CSWorkspace', '⬡ ' .. ws._current .. '  ')
+  end
+
+  -- Claude activity / session cost: spinner-count while jobs run, else total spend.
+  local ok_run, runner = pcall(require, 'claudespace.claude.runner')
+  if ok_run then
+    local active = runner.active()
+    local cost   = runner.usage().cost
+    if active > 0 then
+      hl(t, 'CSInfo', '󰭹 ' .. active .. '⟳  ')
+    elseif cost > 0 then
+      hl(t, 'CSInfo', ('󰭹 $%.2f  '):format(cost))
+    end
   end
 
   -- neotest status (running/failed count)

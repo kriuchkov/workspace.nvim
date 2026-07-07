@@ -135,9 +135,7 @@ local function explain(is_visual)
   parts[#parts + 1] = table.concat(lines, '\n')
   parts[#parts + 1] = '```'
 
-  run(table.concat(parts, '\n'), 'explaining…', function(result)
-    util.read_float(vim.split(result, '\n'), ' Claude Explain ', 'markdown')
-  end, { model = EXPLAIN_MODEL })
+  util.stream_float(table.concat(parts, '\n'), ' Claude Explain ', { model = EXPLAIN_MODEL })
 end
 
 function M.explain_normal() explain(false) end

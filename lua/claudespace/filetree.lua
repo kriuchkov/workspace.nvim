@@ -373,6 +373,10 @@ local function render()
     hi(#lines - 1, 0, -1, 'Comment')
   end
 
+  -- Footer hint so `?` is discoverable without opening the help first.
+  lines[#lines + 1] = '  ? help'
+  hi(#lines - 1, 0, -1, 'CSTreeGuide')
+
   api.nvim_set_option_value('modifiable', true,  { buf = S.buf })
   api.nvim_buf_set_lines(S.buf, 0, -1, false, lines)
   api.nvim_set_option_value('modifiable', false, { buf = S.buf })
@@ -464,22 +468,73 @@ local function open_preview()
   end
 end
 
-local function new_file()
-  local e = entry_at_cursor()
-  local dir
-  if e then
-    dir = e.is_dir and S.expanded[e.path] and e.path or fn.fnamemodify(e.path, ':h')
-  else
-    dir = S.root
+-- Absolute path with any trailing slash stripped, for buffer-name matching.
+local function norm(path) return (fn.fnamemodify(path, ':p'):gsub('/$', '')) end
+
+-- After a file/dir moves on disk, repoint open buffers so they don't keep
+-- pointing at (and later overwrite) the old location. A moved directory is
+-- handled by prefix-matching every buffer beneath it.
+local function sync_buffers(old, new)
+  old, new = norm(old), norm(new)
+  for _, b in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_valid(b) and vim.bo[b].buftype == '' then
+      local name = api.nvim_buf_get_name(b)
+      if name == old then
+        pcall(api.nvim_buf_set_name, b, new)
+      elseif name:sub(1, #old + 1) == old .. '/' then
+        pcall(api.nvim_buf_set_name, b, new .. name:sub(#old + 1))
+      end
+    end
   end
-  vim.ui.input({ prompt = 'New file: ' }, function(name)
+end
+
+-- Wipe any buffers backing a deleted file/dir (or files beneath a deleted dir).
+local function wipe_buffers(path)
+  path = norm(path)
+  for _, b in ipairs(api.nvim_list_bufs()) do
+    if api.nvim_buf_is_valid(b) then
+      local name = api.nvim_buf_get_name(b)
+      if name == path or name:sub(1, #path + 1) == path .. '/' then
+        pcall(api.nvim_buf_delete, b, { force = true })
+      end
+    end
+  end
+end
+
+-- Directory a new entry should land in: the cursor entry when it's an expanded
+-- dir, else that entry's parent; the root when the cursor is on nothing.
+local function target_dir()
+  local e = entry_at_cursor()
+  if not e then return S.root end
+  return (e.is_dir and S.expanded[e.path]) and e.path or fn.fnamemodify(e.path, ':h')
+end
+
+-- Create a file (or a folder when the name ends in '/'); intermediate dirs are
+-- created too, so "a/b/c.lua" works. Reveals and selects the new entry.
+local function new_file()
+  local dir = target_dir()
+  vim.ui.input({ prompt = 'New file (end with / for folder): ' }, function(name)
     if not name or name == '' then return end
-    local path = dir .. '/' .. name
+    local is_dir = name:sub(-1) == '/'
+    local path   = norm(dir .. '/' .. name)
     fn.mkdir(fn.fnamemodify(path, ':h'), 'p')
-    local f = io.open(path, 'w')
-    if f then f:close() end
-    refresh_git()
-    render()
+    if is_dir then
+      fn.mkdir(path, 'p')
+    elseif fn.filereadable(path) == 0 then
+      local f = io.open(path, 'w'); if f then f:close() end
+    end
+    M.focus_path(path)
+  end)
+end
+
+-- Create a folder (explicit counterpart to new_file's trailing-slash shortcut).
+local function new_dir()
+  local dir = target_dir()
+  vim.ui.input({ prompt = 'New folder: ' }, function(name)
+    if not name or name == '' then return end
+    local path = norm(dir .. '/' .. name)
+    fn.mkdir(path, 'p')
+    M.focus_path(path)
   end)
 end
 
@@ -488,11 +543,37 @@ local function rename_entry()
   if not e then return end
   vim.ui.input({ prompt = 'Rename: ', default = e.name }, function(name)
     if not name or name == '' or name == e.name then return end
-    local new_path = fn.fnamemodify(e.path, ':h') .. '/' .. name
+    local new_path = norm(fn.fnamemodify(e.path, ':h') .. '/' .. name)
+    if fn.filereadable(new_path) == 1 or fn.isdirectory(new_path) == 1 then
+      vim.notify('Target exists: ' .. name, vim.log.levels.ERROR); return
+    end
     local ok, err = os.rename(e.path, new_path)
     if not ok then vim.notify('Rename failed: ' .. (err or ''), vim.log.levels.ERROR); return end
-    refresh_git()
-    render()
+    sync_buffers(e.path, new_path)
+    M.focus_path(new_path)
+  end)
+end
+
+-- Move a file/dir to another path. The prompt is pre-filled with the path
+-- relative to the tree root; a leading '/' or '~' is treated as absolute.
+-- Missing parent directories are created.
+local function move_entry()
+  local e = entry_at_cursor()
+  if not e then return end
+  local default = e.path:sub(#S.root + 2)   -- strip "root/"
+  vim.ui.input({ prompt = 'Move to: ', default = default, completion = 'dir' }, function(dest)
+    if not dest or dest == '' then return end
+    dest = fn.expand(dest)
+    local target = norm(dest:sub(1, 1) == '/' and dest or (S.root .. '/' .. dest))
+    if target == e.path then return end
+    if fn.filereadable(target) == 1 or fn.isdirectory(target) == 1 then
+      vim.notify('Target exists: ' .. target, vim.log.levels.ERROR); return
+    end
+    fn.mkdir(fn.fnamemodify(target, ':h'), 'p')
+    local ok, err = os.rename(e.path, target)
+    if not ok then vim.notify('Move failed: ' .. (err or ''), vim.log.levels.ERROR); return end
+    sync_buffers(e.path, target)
+    M.focus_path(target)
   end)
 end
 
@@ -503,6 +584,7 @@ local function delete_entry()
   local choice = vim.fn.confirm('Delete ' .. label .. '?', '&Yes\n&No', 2)
   if choice ~= 1 then return end
   fn.delete(e.path, e.is_dir and 'rf' or '')
+  wipe_buffers(e.path)
   refresh_git()
   render()
 end
@@ -539,8 +621,10 @@ local HELP_LINES = {
   '  <CR> / l   open file / expand dir',
   '  o          open (keep tree focus)',
   '  h          collapse / go to parent',
-  '  n          new file',
+  '  n          new file (end / for folder)',
+  '  N          new folder',
   '  r          rename',
+  '  m          move',
   '  d          delete',
   '  y          yank path to clipboard',
   '  C          set dir as root',
@@ -677,7 +761,9 @@ local function create_buf()
   k('n', 'H',     function() S.show_hidden = not S.show_hidden; render() end, o)
   k('n', 'R',     function() refresh_git(); render() end, o)
   k('n', 'n',     new_file,          o)
+  k('n', 'N',     new_dir,           o)
   k('n', 'r',     rename_entry,      o)
+  k('n', 'm',     move_entry,        o)
   k('n', 'd',     delete_entry,      o)
   k('n', 'y',     yank_path,         o)
   k('n', 'C',     change_root,       o)
@@ -885,6 +971,15 @@ function M.setup()
   api.nvim_create_autocmd('BufWritePost', {
     callback = function()
       if S.win and api.nvim_win_is_valid(S.win) then refresh_git(); render() end
+    end,
+  })
+
+  -- Re-render when the active repo changes (switching files between member
+  -- repos) so the active-repo root highlight follows the current file.
+  api.nvim_create_autocmd('User', {
+    pattern = 'ClaudespaceRepoChanged',
+    callback = function()
+      if S.win and api.nvim_win_is_valid(S.win) then render() end
     end,
   })
 

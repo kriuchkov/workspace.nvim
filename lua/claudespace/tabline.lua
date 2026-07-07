@@ -39,7 +39,8 @@ local order_seq = 0
 local git_status = {}       -- { [path] = 'new' | 'mod' } refreshed async from git
 local PIN_GLYPH = '▎'       -- accent bar marking pinned tabs (font-independent)
 
-local TAB_MAXW  = 24                          -- truncate filenames beyond this width
+local TAB_MAXW   = 24                         -- truncate filenames beyond this width
+local GROUP_MAXW = 16                         -- shorter cap for group header labels
 local RECENT_N  = 2                           -- this many MRU inactive tabs stay bright
 local SUPER     = { '¹', '²', '³', '⁴', '⁵', '⁶', '⁷', '⁸', '⁹' } -- quick-jump numbers (<leader>1..9 / Alt+1..9)
 local CAP_L, CAP_R = '', ''                 -- rounded pill caps around the active tab
@@ -270,10 +271,11 @@ local function group_tint(gid)
   return 'CSGroupT' .. groups[gid].color_idx
 end
 
--- Truncate a label to TAB_MAXW chars (multibyte-safe), adding an ellipsis.
-local function truncate(s)
-  if vim.fn.strchars(s) <= TAB_MAXW then return s end
-  return vim.fn.strcharpart(s, 0, TAB_MAXW - 1) .. '…'
+-- Truncate a label to `max` chars (multibyte-safe), adding an ellipsis.
+local function truncate(s, max)
+  max = max or TAB_MAXW
+  if vim.fn.strchars(s) <= max then return s end
+  return vim.fn.strcharpart(s, 0, max - 1) .. '…'
 end
 
 -- Filetype icon (glyph + base hl) for a buffer's path, via mini.icons.
@@ -642,9 +644,10 @@ function M.render()
           end
         end)()
         local marker = active_inside and ' ●' or ''
+        local gname = truncate(grp.name, GROUP_MAXW)
         local label = grp.collapsed
-          and (' ' .. num .. '▶ ' .. grp.name .. ' (' .. count .. ')' .. marker .. ' ')
-          or  (' ' .. num .. '▼ ' .. grp.name .. ' ')
+          and (' ' .. num .. '▶ ' .. gname .. ' (' .. count .. ')' .. marker .. ' ')
+          or  (' ' .. num .. '▼ ' .. gname .. ' ')
         u[#u+1] = '%#' .. group_hl(gid) .. '#'
         u[#u+1] = '%' .. gid .. '@v:lua.CSGroupToggle@'
         u[#u+1] = label

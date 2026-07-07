@@ -1,0 +1,5 @@
+# build artifacts (per repo)
+**/target/
+**/Cargo.lock
+services/vega/vega
+services/lyra/lyra
