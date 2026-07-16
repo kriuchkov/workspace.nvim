@@ -57,9 +57,10 @@ tc.setup {
 map('n', ']t', tc.jump_next, { desc = 'Next TODO',  silent = true })
 map('n', '[t', tc.jump_prev, { desc = 'Prev TODO',  silent = true })
 
--- List all TODOs
-map('n', '<leader>xt', '<cmd>Trouble todo toggle<cr>',
-  { desc = 'TODOs panel', silent = true })
+-- List all TODOs (center-window list; the old Trouble mode needed the real
+-- todo-comments plugin, which is vendored here)
+map('n', '<leader>xt', tc.workspace,
+  { desc = 'TODOs list', silent = true })
 map('n', '<leader>ft', '<cmd>TodoTelescope<cr>',
   { desc = 'Find TODOs',  silent = true })
 

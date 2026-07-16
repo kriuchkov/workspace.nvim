@@ -28,9 +28,9 @@ local ACTIONS = {
   -- Git
   { group = 'Git',       label = 'Git: staging panel',      keys = '<leader>gG', action = function() require('workspace.git_ui').open() end },
   { group = 'Git',       label = 'Git: lazygit',            keys = '<leader>gg', action = function() vim.cmd 'LazyGit' end },
-  { group = 'Git',       label = 'Git: diff view',          keys = '<leader>gd', action = function() vim.cmd 'DiffviewOpen' end },
-  { group = 'Git',       label = 'Git: file history',       keys = '<leader>gh', action = function() vim.cmd 'DiffviewFileHistory %' end },
-  { group = 'Git',       label = 'Git: repo log',           keys = '<leader>gl', action = function() vim.cmd 'DiffviewFileHistory' end },
+  { group = 'Git',       label = 'Git: diff current file',   keys = '<leader>gd', action = function() vim.cmd 'WSDiff' end },
+  { group = 'Git',       label = 'Git: file history',        keys = '<leader>gh', action = function() vim.cmd 'WSFileHistory' end },
+  { group = 'Git',       label = 'Git: repo log',            keys = '<leader>gl', action = function() vim.cmd 'WSLog' end },
   -- Test / Run
   { group = 'Test',      label = 'Test: run nearest',       keys = '<leader>rr', action = function() require('neotest').run.run() end },
   { group = 'Test',      label = 'Test: run file',          keys = '<leader>rR', action = function() require('neotest').run.run(vim.fn.expand '%') end },

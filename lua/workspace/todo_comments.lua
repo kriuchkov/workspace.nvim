@@ -587,6 +587,9 @@ function M.setup(opts)
   vim.api.nvim_create_user_command('TodoTrouble',    function()
     require('trouble').open { mode = 'todo', focus = true }
   end, {})
+  vim.api.nvim_create_user_command('WSTodos', function(o)
+    M.workspace(parse_opts(o.args))
+  end, { nargs = '?' })
 end
 
 M.jump_next = Jump.next
@@ -614,37 +617,168 @@ local function scope_dirs()
   return { vim.fn.getcwd() }, false
 end
 
--- List TODO/FIX/HACK/… comments across the current workspace (all repos) or, in
--- a single repo, that repo's root. Prefers a Telescope picker to match the other
--- activity-bar actions; falls back to a quickfix list when Telescope is absent.
-function M.workspace(opts)
-  opts = opts or {}
-  local dirs, multi = scope_dirs()
+-- Sidebar TODO panel (activity-bar slot, like the diagnostics panel): grouped
+-- by file, <CR> opens the file at the TODO in the center window.
+local List = {
+  ns = vim.api.nvim_create_namespace 'cs_todolist',
+  win = nil, buf = nil, anchor = nil, at = {}, keywords = nil,
+}
+local WIDTH = 44
 
-  local ok = pcall(function()
-    require('telescope').extensions['todo-comments'].todo(
-      vim.tbl_extend('force', {
-        search_dirs   = dirs,
-        prompt_title  = multi and 'Workspace TODOs' or 'Repo TODOs',
-      }, opts))
+local function rel_to(dirs, file)
+  for _, d in ipairs(dirs) do
+    local p = d:sub(-1) == '/' and d or (d .. '/')
+    if file:sub(1, #p) == p then return file:sub(#p + 1) end
+  end
+  return vim.fn.fnamemodify(file, ':~')
+end
+
+local function render_list(items, dirs, title)
+  local api = vim.api
+  if not (List.buf and api.nvim_buf_is_valid(List.buf)) then return end
+  table.sort(items, function(a, b)
+    if a.filename ~= b.filename then return a.filename < b.filename end
+    return a.lnum < b.lnum
   end)
-  if ok then return end
 
-  -- Quickfix fallback: search each dir, merge, then open one list.
+  local lines, hls = {}, {}
+  List.at = {}
+  local function add(s) lines[#lines + 1] = s end
+  local function hl(group, s, e) hls[#hls + 1] = { #lines - 1, s, e, group } end
+
+  local last
+  for _, it in ipairs(items) do
+    if it.filename ~= last then
+      last = it.filename
+      if #lines > 0 then add '' end
+      add(' ' .. vim.fn.strcharpart(rel_to(dirs, it.filename), 0, WIDTH - 2))
+      hl('Directory', 0, -1)
+      List.at[#lines] = { filename = it.filename, lnum = 1, col = 1 }
+    end
+    local kw   = it.tag or 'TODO'
+    local icon = (Config.options.keywords[kw] or {}).icon or ''
+    local head = '  ' .. icon .. kw
+    local ln   = ' ' .. it.lnum .. '  '
+    local msg  = it.message ~= '' and it.message or vim.trim(it.text or '')
+    add(vim.fn.strcharpart(head .. ln .. msg, 0, WIDTH - 1))
+    List.at[#lines] = it
+    hl('TodoFg' .. kw, 2, #head)
+    hl('NonText', #head, #head + #ln)
+  end
+  if #items == 0 then add ' (no todos found)'; hl('Comment', 0, -1) end
+
+  vim.bo[List.buf].modifiable = true
+  api.nvim_buf_set_lines(List.buf, 0, -1, false, lines)
+  vim.bo[List.buf].modifiable = false
+  api.nvim_buf_clear_namespace(List.buf, List.ns, 0, -1)
+  for _, h in ipairs(hls) do
+    api.nvim_buf_add_highlight(List.buf, List.ns, h[4], h[1], h[2], h[3])
+  end
+  if List.win and api.nvim_win_is_valid(List.win) then
+    vim.wo[List.win].winbar =
+      ('%%#Title# %s  %d %%#CSInfo# <CR> open  r refresh  q close'):format(title, #items)
+  end
+end
+
+local function search_all(cb)
+  local dirs, multi = scope_dirs()
+  local title = multi and 'WORKSPACE TODOS' or 'REPO TODOS'
   local all, remaining = {}, #dirs
   for _, dir in ipairs(dirs) do
     Search.search(function(results)
       vim.list_extend(all, results)
       remaining = remaining - 1
-      if remaining == 0 then
-        if #all == 0 then Util.warn 'no todos found'; return end
-        vim.fn.setqflist({}, ' ', { title = 'Todo', items = all })
-        vim.cmd 'copen'
-        local win = vim.fn.getqflist { winid = true }
-        if win.winid ~= 0 then Highlight.attach(win.winid, true) end
-      end
-    end, { cwd = dir, disable_not_found_warnings = true })
+      if remaining == 0 then cb(all, dirs, title) end
+    end, { cwd = dir, keywords = List.keywords, disable_not_found_warnings = true })
   end
+end
+
+local function jump_to()
+  local it = List.at[vim.api.nvim_win_get_cursor(List.win)[1]]
+  if not it then return end
+  vim.api.nvim_set_current_win(require('workspace.shell').center())
+  vim.cmd('edit ' .. vim.fn.fnameescape(it.filename))
+  pcall(vim.api.nvim_win_set_cursor, 0, { it.lnum, math.max(0, (it.col or 1) - 1) })
+  vim.cmd 'normal! zz'
+end
+
+function M.refresh() search_all(render_list) end
+
+-- Shared teardown for q, :q and sidebar-driven closes: wipe the scratch buffer
+-- (they'd pile up hidden otherwise) and un-mark the activity-bar icon.
+local function on_panel_closed()
+  List.win = nil
+  if List.buf and vim.api.nvim_buf_is_valid(List.buf) then
+    pcall(vim.api.nvim_buf_delete, List.buf, { force = true })
+  end
+  List.buf = nil
+  pcall(function() require('workspace.sidebar').deactivated 'todo' end)
+end
+
+function M.close_panel()
+  if List.win and vim.api.nvim_win_is_valid(List.win) then
+    pcall(vim.api.nvim_win_close, List.win, true)  -- WinClosed runs the teardown
+  else
+    on_panel_closed()
+  end
+end
+
+-- Fallback anchor when opened via keymap/command instead of the activity bar.
+local function default_anchor()
+  for _, w in ipairs(vim.api.nvim_list_wins()) do
+    if vim.bo[vim.api.nvim_win_get_buf(w)].filetype == 'cs_activitybar' then return w end
+  end
+end
+
+function M.open_panel(anchor_win, keywords)
+  local api = vim.api
+  List.keywords = keywords
+  if List.win and api.nvim_win_is_valid(List.win) then
+    api.nvim_set_current_win(List.win)
+    M.refresh()
+    return
+  end
+  List.buf = api.nvim_create_buf(false, true)
+  vim.bo[List.buf].buftype   = 'nofile'
+  vim.bo[List.buf].bufhidden = 'hide'
+  vim.bo[List.buf].swapfile  = false
+  vim.bo[List.buf].filetype  = 'cs_todolist'
+
+  anchor_win = anchor_win or default_anchor()
+  if anchor_win and api.nvim_win_is_valid(anchor_win) then List.anchor = anchor_win end
+  if List.anchor and api.nvim_win_is_valid(List.anchor) then
+    api.nvim_set_current_win(List.anchor)
+    vim.cmd 'rightbelow vsplit'
+  else
+    List.anchor = nil
+    vim.cmd 'topleft vsplit'
+  end
+  List.win = api.nvim_get_current_win()
+  api.nvim_win_set_buf(List.win, List.buf)
+  api.nvim_win_set_width(List.win, WIDTH)
+  local wo = vim.wo[List.win]
+  wo.number = false; wo.relativenumber = false; wo.signcolumn = 'no'
+  wo.wrap = false; wo.cursorline = true; wo.winfixwidth = true
+  wo.winbar = '%#Title# TODOS %#CSInfo# searching…'
+  -- workspace.winbar wipes nofile winbars on WinEnter unless flagged.
+  pcall(api.nvim_win_set_var, List.win, 'cs_winbar', true)
+
+  local o = { buffer = List.buf, nowait = true, silent = true }
+  vim.keymap.set('n', '<CR>', jump_to,       o)
+  vim.keymap.set('n', 'r',    M.refresh,     o)
+  vim.keymap.set('n', 'q',    M.close_panel, o)
+
+  api.nvim_create_autocmd('WinClosed', {
+    pattern = tostring(List.win), once = true,
+    callback = vim.schedule_wrap(on_panel_closed),
+  })
+  M.refresh()
+end
+
+-- List TODO/FIX/HACK/… comments across the current workspace (all repos) or, in
+-- a single repo, that repo's root — in the left sidebar panel.
+function M.workspace(opts)
+  M.open_panel(nil, opts and opts.keywords or nil)
 end
 
 return M

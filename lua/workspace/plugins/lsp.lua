@@ -17,14 +17,28 @@ vim.pack.add {
   'https://github.com/williamboman/mason-lspconfig.nvim',
 }
 pcall(function() require('mason').setup() end)
+
+-- Neovim-aware lua_ls: knows the `vim` global and runtime API, otherwise every
+-- config file drowns in "Undefined global `vim`" warnings. mason-lspconfig v2
+-- auto-enables servers via vim.lsp.enable(), which merges this vim.lsp.config
+-- override (its v1 `handlers` table is gone and would be silently ignored).
+vim.lsp.config('lua_ls', {
+  settings = {
+    Lua = {
+      runtime     = { version = 'LuaJIT' },
+      diagnostics = { globals = { 'vim' } },
+      workspace   = {
+        library         = { vim.env.VIMRUNTIME, '${3rd}/luv/library' },
+        checkThirdParty = false,
+      },
+      telemetry = { enable = false },
+    },
+  },
+})
+
 pcall(function()
   require('mason-lspconfig').setup {
     ensure_installed = { 'lua_ls', 'gopls', 'ts_ls', 'pyright', 'vimls' },
-    handlers = {
-      function(server_name)
-        pcall(function() require('lspconfig')[server_name].setup {} end)
-      end,
-    },
   }
 end)
 

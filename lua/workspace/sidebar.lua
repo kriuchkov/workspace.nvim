@@ -44,8 +44,9 @@ local VIEWS = {
     run = function() pcall(vim.cmd, 'Telescope buffers') end },
   { id = 'tests', icon = ic(0xf0c3), label = 'Tests', kind = 'launch',
     run = function() require('workspace.test_ui').run() end },
-  { id = 'todo', icon = ic(0xf046), label = 'TODO', kind = 'launch',
-    run = function() require('workspace.todo_comments').workspace() end },
+  { id = 'todo', icon = ic(0xf046), label = 'TODO', kind = 'panel',
+    open  = function() require('workspace.todo_comments').open_panel(S.ab_win) end,
+    close = function() require('workspace.todo_comments').close_panel() end },
   { id = 'marks', icon = ic(0xf02e), label = 'Marks', kind = 'launch',
     run = function() require('workspace.marks').show() end },
   { id = 'tasks', icon = ic(0xf0ae), label = 'Tasks', kind = 'launch',
@@ -219,6 +220,15 @@ function M.select(id)
   render_bar()
 end
 
+-- A panel closed itself (q / :q inside it): clear the active mark so the next
+-- activity-bar click opens it again instead of "toggling" a dead panel.
+function M.deactivated(id)
+  if S.active == id then
+    S.active = nil
+    render_bar()
+  end
+end
+
 function M.open()
   ensure_bar()
   if not S.active then M.select 'explorer' end
@@ -269,8 +279,10 @@ local FIXED_WIDTH = {
   cs_activitybar = 5,
   cs_filetree    = 30,
   cs_gitui       = 44,
+  cs_gitchanges  = 44,   -- CHANGES stacked below the repos panel, same column
   cs_outline     = 34,
   cs_diagpanel   = 50,
+  cs_todolist    = 44,
 }
 
 local function repin_widths()

@@ -79,6 +79,9 @@ function M.setup()
   api.nvim_create_autocmd('User', { pattern = 'CSThemeApplied', callback = setup_highlights })
   api.nvim_create_autocmd({ 'BufWinEnter', 'WinEnter' }, {
     callback = function()
+      -- Panels (gitdiff labels, diag/todo hints) own their winbar: the w: flag
+      -- keeps it from being wiped by the nofile rule below on every re-entry.
+      if vim.w.cs_winbar then return end
       if SKIP_FT[vim.bo.filetype] or SKIP_BT[vim.bo.buftype] then
         vim.wo.winbar = ''
       else

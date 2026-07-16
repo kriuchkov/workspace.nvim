@@ -64,31 +64,12 @@ if pcall(require, 'gitsigns') then
   }
 end
 
--- ── diffview ──────────────────────────────────────────────────────────────────
--- Full-screen diff/log viewer.
+-- ── diff / history ──────────────────────────────────────────────────────────────
+-- Native, workspace-integrated diff & log viewer (replaces diffview.nvim). Renders
+-- in the center window using Neovim's own diff mode; registers <leader>gd/gh/gl/gD
+-- and :WSDiff / :WSFileHistory / :WSLog / :WSDiffClose.
 
-vim.pack.add { 'https://github.com/sindrets/diffview.nvim' }
-if pcall(require, 'diffview') then
-  require('diffview').setup {
-    enhanced_diff_hl = true,
-    view = {
-      default = { layout = 'diff2_horizontal' },
-    },
-    hooks = {
-      -- Close diffview when it's the only tab
-      diff_buf_read = function() vim.wo.wrap = false end,
-    },
-  }
-end
-
--- Current file diff vs index
-map('n', '<leader>gd', '<cmd>DiffviewOpen<cr>',           { desc = 'Git: diff index', silent = true })
--- Current file history
-map('n', '<leader>gh', '<cmd>DiffviewFileHistory %<cr>',  { desc = 'Git: file history', silent = true })
--- Repo-wide commit log
-map('n', '<leader>gl', '<cmd>DiffviewFileHistory<cr>',    { desc = 'Git: repo log', silent = true })
--- Close diffview
-map('n', '<leader>gD', '<cmd>DiffviewClose<cr>',          { desc = 'Git: close diff', silent = true })
+require('workspace.gitdiff').setup()
 
 -- ── lazygit ───────────────────────────────────────────────────────────────────
 -- Floating terminal wrapper around the lazygit CLI.

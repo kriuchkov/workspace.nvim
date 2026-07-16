@@ -47,13 +47,33 @@ local function editor_win()
   return require('workspace.shell').center()
 end
 
-local function jump()
+-- Focus the diagnostic under the panel cursor in the center window; returns it.
+local function goto_item()
   local it = S.items[api.nvim_win_get_cursor(S.win)[1]]
-  if not it or not api.nvim_buf_is_valid(it.bufnr) then return end
+  if not it or not api.nvim_buf_is_valid(it.bufnr) then return nil end
   api.nvim_set_current_win(editor_win())
   pcall(api.nvim_win_set_buf, 0, it.bufnr)
   pcall(api.nvim_win_set_cursor, 0, { it.lnum + 1, it.col })
   vim.cmd 'normal! zz'
+  return it
+end
+
+local function jump() goto_item() end
+
+-- LSP quickfix: jump to the diagnostic and open the code-action menu there.
+local function fix_lsp()
+  local it = goto_item()
+  if not it then return end
+  if not next(vim.lsp.get_clients { bufnr = it.bufnr }) then
+    vim.notify('No LSP attached — no code actions', vim.log.levels.WARN); return
+  end
+  vim.lsp.buf.code_action()
+end
+
+-- AI quickfix: jump and hand the diagnostic to the headless Claude fixer
+-- (diff preview, applied only on confirm).
+local function fix_claude()
+  if goto_item() then require('workspace.claude.fix').fix() end
 end
 
 function M.open(anchor_win)
@@ -78,16 +98,26 @@ function M.open(anchor_win)
   local wo = vim.wo[S.win]
   wo.number = false; wo.relativenumber = false; wo.signcolumn = 'no'
   wo.wrap = false; wo.cursorline = true; wo.winfixwidth = true
-  wo.winbar = '%#Title# Diagnostics'
+  -- Keymap hints live in the winbar: always visible, unlike a footer line that
+  -- scrolls away once the list is longer than the panel.
+  wo.winbar = '%#Title# Diagnostics %#CSInfo# <CR> open  f fix  c claude  q close'
+  -- workspace.winbar wipes nofile winbars on WinEnter unless flagged.
+  pcall(api.nvim_win_set_var, S.win, 'cs_winbar', true)
 
   local o = { buffer = S.buf, nowait = true, silent = true }
-  vim.keymap.set('n', '<CR>', jump,    o)
-  vim.keymap.set('n', 'q',    M.close, o)
-  vim.keymap.set('n', 'r',    render,  o)
+  vim.keymap.set('n', '<CR>', jump,       o)
+  vim.keymap.set('n', 'f',    fix_lsp,    o)
+  vim.keymap.set('n', 'c',    fix_claude, o)
+  vim.keymap.set('n', 'q',    M.close,    o)
+  vim.keymap.set('n', 'r',    render,     o)
 
   api.nvim_create_autocmd('WinClosed', {
     pattern = tostring(S.win), once = true,
-    callback = function() S.win = nil end,
+    callback = function()
+      S.win = nil
+      -- q / :q inside the panel must also un-mark the activity-bar icon.
+      pcall(function() require('workspace.sidebar').deactivated 'diagnostics' end)
+    end,
   })
   render()
 end
