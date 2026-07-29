@@ -237,7 +237,7 @@ local function apply()
   vim.g.terminal_color_15 = c.fg_bright
 
   -- `highlight clear` above wiped every group, so let plugins that hook
-  -- ColorScheme (telescope, gitsigns, which-key, …) re-apply their palette, then
+  -- ColorScheme (gitsigns, treesitter, …) re-apply their palette, then
   -- let our own UI modules re-tint via the dedicated event.
   vim.api.nvim_exec_autocmds('ColorScheme', { pattern = 'workspace' })
   vim.api.nvim_exec_autocmds('User', { pattern = 'CSThemeApplied' })

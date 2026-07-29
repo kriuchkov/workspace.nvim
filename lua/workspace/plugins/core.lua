@@ -1,18 +1,20 @@
 local map = vim.keymap.set
 
--- ── Telescope ─────────────────────────────────────────────────────────────────
+-- ── Fuzzy finder ──────────────────────────────────────────────────────────────
+-- Native picker (prompt + results + preview, fuzzy via matchfuzzypos, async via
+-- vim.system). Backs vim.ui.select and every workspace picker; no telescope.
+-- plenary stays for neotest and the todo search job.
 
-vim.pack.add {
-  'https://github.com/nvim-telescope/telescope.nvim',
-  'https://github.com/nvim-lua/plenary.nvim',
-}
-pcall(function() require('telescope').setup() end)
+vim.pack.add { 'https://github.com/nvim-lua/plenary.nvim' }
 
-map('n', '<leader>ff', '<cmd>Telescope find_files<cr>', { desc = 'Find files' })
-map('n', '<leader>fg', '<cmd>Telescope live_grep<cr>',  { desc = 'Live grep' })
-map('n', '<leader>fb', '<cmd>Telescope buffers<cr>',    { desc = 'Buffers' })
-map('n', '<leader>fh', '<cmd>Telescope help_tags<cr>',  { desc = 'Help' })
-map('n', '<leader>fr', '<cmd>Telescope oldfiles<cr>',   { desc = 'Recent files' })
+local picker = require 'workspace.picker'
+picker.setup()
+
+map('n', '<leader>ff', function() picker.files() end,    { desc = 'Find files' })
+map('n', '<leader>fg', function() picker.grep() end,     { desc = 'Live grep' })
+map('n', '<leader>fb', function() picker.buffers() end,  { desc = 'Buffers' })
+map('n', '<leader>fh', function() picker.help() end,     { desc = 'Help' })
+map('n', '<leader>fr', function() picker.oldfiles() end, { desc = 'Recent files' })
 
 -- ── Treesitter ────────────────────────────────────────────────────────────────
 -- Per-buffer activation via FileType autocmd — avoids nvim-treesitter.configs API

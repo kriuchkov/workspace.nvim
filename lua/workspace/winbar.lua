@@ -67,8 +67,8 @@ end
 local SKIP_FT = {
   cs_filetree = true, cs_dirdash = true, cs_outline = true,
   cs_home = true, cs_notify = true, cs_gitui = true, cs_mdtoc = true,
-  TelescopePrompt = true, lazy = true, mason = true,
-  help = true, trouble = true, dap_repl = true,
+  lazy = true, mason = true,
+  help = true, dap_repl = true,
   ['dapui_watches'] = true, ['dapui_stacks'] = true,
   ['dapui_breakpoints'] = true, ['dapui_scopes'] = true,
 }

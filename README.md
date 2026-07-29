@@ -61,8 +61,9 @@ The GIF above is the [`orbit`](demo/workspace) demo: a real multi-repo workspace
 - **Markdown preview** (in-buffer, no plugins) — headings, tables aligned to the widest cell, `<details>/<summary>` folds, GitHub callouts, task lists, TOC panel, link navigation, zen/focus reading mode
 - Custom **file tree** — repo roots, git status icons, gitignore dimming, diagnostic badges, create/move/rename/delete with open-buffer sync
 - **Activity bar** (VS Code-style) — Explorer, Search, Git, Outline, Diagnostics, Tasks and more; press `?` to reveal each icon's hotkey
+- **Fuzzy finder** (no telescope) — files, live grep, buffers, recent, help, all with a preview pane; fuzzy ranking via Neovim's built-in `matchfuzzypos`, async via `vim.system`; also backs `vim.ui.select`
 - **JSON tools** — `<leader>=` pretty-formats a buffer via `jq`; `<leader>uj` shows it pretty read-only (file untouched)
-- **Keymap cheatsheet** (`<leader>?`) built from your live `<leader>` maps, plus which-key
+- **Keymap cheatsheet** (`<leader>?`) built from your live `<leader>` maps, plus a native **which-key** popup (pause on `<leader>`, no plugin)
 - **Directory dashboard** (replaces netrw), **LSP outline** panel, **winbar** breadcrumb, **notifications** center, per-workspace **quick marks**, **command palette**
 
 ### Git
@@ -84,7 +85,6 @@ Headless, on-demand — each runs `claude --print --output-format stream-json` a
 - **Fix / explain** — fix the diagnostic under the cursor (`<leader>cf`), explain code (`<leader>ck`)
 - **Commands** — run your `.claude/commands/*.md` with their argument prompts (`<leader>cC`)
 - **Structured runner** — tokens stream live, tool activity shown, exact cost / turn count, cancel anytime (`<leader>cx`)
-- **[claudecode.nvim](https://github.com/coder/claudecode.nvim)** wiring (optional) — share cursor/selection/diagnostics with a Claude Code you run in a real terminal; accept/reject its inline diffs (`<leader>cy` / `<leader>cY`)
 
 > **On Claude Code.** These helpers are a thin **frontend for [Claude Code](https://www.anthropic.com/claude-code)**: they shell out to the official `claude` binary you already have installed and logged in, using documented flags (`--print`, `--output-format stream-json`) and your existing `~/.claude` config, `CLAUDE.md`, MCP servers and permission mode. No API keys, nothing reverse-engineered — every AI action stays within [Claude Code's Terms of Use](https://www.anthropic.com/legal/consumer-terms). They are entirely optional; `workspace` is a full editor without them.
 
@@ -208,6 +208,7 @@ bash scripts/check.sh        # syntax + module load + unit tests
 | `<leader>ff` / `<leader>fg` / `<leader>fr` / `<leader>fb` | Find files / grep / recent / buffers |
 | `<leader>fG` / `<leader>fR` | Live grep scoped by glob / in the active repo |
 | `<leader>?` | Keymap cheatsheet (live `<leader>` maps, grouped) |
+| `<leader>xx` / `<leader>xs` | Diagnostics panel / Symbols (outline) panel |
 | `<leader>xo` | Outline panel |
 | `<leader>z` | Zen / reading mode |
 | `<leader>ub` | Toggle dark / light background (`:CSThemeToggle`) |
@@ -229,13 +230,12 @@ lua/
     │   ├── palette.lua      # dark + light semantic palettes
     │   └── init.lua         # applier, terminal-driven dark/light switch
     ├── plugins/
-    │   ├── ui.lua           # theme + which-key + icons
-    │   ├── core.lua         # base plugin set
+    │   ├── ui.lua           # theme + native which-key + icons
+    │   ├── core.lua         # native fuzzy picker, treesitter, folds
     │   ├── lsp.lua          # LSP + cmp
     │   ├── langs.lua        # treesitter / language extras
     │   ├── git.lua          # gitsigns
-    │   ├── debug.lua        # DAP
-    │   └── claude.lua       # optional claudecode.nvim wiring
+    │   └── debug.lua        # DAP
     ├── claude/              # optional, headless AI helpers (no sessions)
     │   ├── runner.lua       # stream-json runner (cancelable, cost/turns)
     │   ├── util.lua         # spinner, floats, async run wrapper
@@ -243,10 +243,11 @@ lua/
     │   ├── git_ops.lua      # commit message / review / PR
     │   ├── assist.lua       # explain / shell → Claude
     │   ├── fix.lua          # fix diagnostic under cursor
-    │   ├── commands.lua     # run .claude/commands/*.md
-    │   └── status.lua       # claudecode.nvim connection indicator
+    │   └── commands.lua     # run .claude/commands/*.md
     ├── tabline.lua          # top bar: Chrome-style buffer groups
     ├── sidebar.lua          # left activity bar + panels
+    ├── picker.lua           # fuzzy picker (no telescope) + vim.ui.select
+    ├── whichkey.lua         # leader-hints popup (no which-key.nvim)
     ├── filetree.lua         # file tree (no neo-tree), multi-repo aware
     ├── statusline.lua       # statusline (no lualine)
     ├── winbar.lua           # breadcrumb winbar

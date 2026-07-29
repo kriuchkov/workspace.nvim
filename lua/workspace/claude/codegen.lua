@@ -120,8 +120,6 @@ end, { desc = 'tests (selection)' })
 
 function M.setup()
   vim.keymap.set('n', '<leader>cgc', M.generate, { desc = 'generate at cursor', silent = true })
-  local ok_wk, wk = pcall(require, 'which-key')
-  if ok_wk and wk.add then wk.add { { '<leader>cg', group = 'generate' } } end
 end
 
 return M

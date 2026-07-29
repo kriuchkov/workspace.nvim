@@ -8,7 +8,7 @@ require 'workspace.plugins'
 
 -- Bootstrap: on first run plugins aren't installed yet — download them and ask to restart
 vim.schedule(function()
-  if not pcall(require, 'telescope') then
+  if not pcall(require, 'gitsigns') then
     vim.notify(
       'workspace: installing plugins… restart Neovim when done.',
       vim.log.levels.WARN

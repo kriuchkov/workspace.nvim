@@ -2,7 +2,7 @@
 local M = {}
 
 local EXCLUDE_FT = { ['cs_filetree'] = true, ['cs_outline'] = true,
-                     ['cs_home'] = true, ['TelescopePrompt'] = true,
+                     ['cs_home'] = true,
                      ['lazy'] = true, ['mason'] = true, ['help'] = true }
 local EXCLUDE_BT = { ['quickfix'] = true, ['prompt'] = true }
 
@@ -1173,15 +1173,9 @@ function M.setup()
     end
   end
   -- Keep all the numeric quick-jump maps out of the which-key popup (clutter).
-  local ok_wk, wk = pcall(require, 'which-key')
-  if ok_wk and wk.add then
-    local spec = {}
-    for g = 1, 9 do
-      spec[#spec + 1] = { '<leader>' .. g, hidden = true }
-      for b = 1, 9 do spec[#spec + 1] = { '<leader>' .. g .. b, hidden = true } end
-    end
-    wk.add(spec)
-  end
+  local hide = {}
+  for g = 1, 9 do hide[#hide + 1] = '<leader>' .. g end
+  pcall(function() require('workspace.whichkey').hide(hide) end)
 
   -- Group keymaps
   map('n', '<leader>tg', function()

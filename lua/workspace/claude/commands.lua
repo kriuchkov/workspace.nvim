@@ -118,46 +118,20 @@ function M.pick()
 
   local label = function(e) return ('/%s   [%s]   %s'):format(e.name, e.repo, e.desc) end
 
-  local ok, pickers = pcall(require, 'telescope.pickers')
-  if not ok then
-    vim.ui.select(items, { prompt = 'Claude commands', format_item = label },
-      function(e) if e then run_default(e) end end)
-    return
-  end
-
-  local finders     = require('telescope.finders')
-  local conf        = require('telescope.config').values
-  local actions     = require('telescope.actions')
-  local astate      = require('telescope.actions.state')
-  local previewers  = require('telescope.previewers')
-
-  pickers.new({}, {
-    prompt_title = 'Claude tasks  (⏎ run · C-a args · C-o edit)',
-    finder = finders.new_table {
-      results = items,
-      entry_maker = function(e)
-        return { value = e, display = label(e), ordinal = e.name .. ' ' .. e.repo, path = e.path }
-      end,
-    },
-    sorter = conf.generic_sorter {},
-    previewer = previewers.vim_buffer_cat.new {},
-    attach_mappings = function(pb, map)
-      actions.select_default:replace(function()
-        local e = astate.get_selected_entry(); actions.close(pb)
-        if e then run_default(e.value) end
-      end)
+  local picker  = require 'workspace.picker'
+  local wrapped = {}
+  for _, e in ipairs(items) do wrapped[#wrapped + 1] = { text = label(e), cmd = e, path = e.path } end
+  picker.open {
+    title = 'Claude tasks  (⏎ run · C-a args · C-o edit)',
+    items = wrapped,
+    preview = picker.file_preview,
+    on_select = function(it) run_default(it.cmd) end,
+    actions = {
       -- Always prompt for arguments, even when no hint was declared.
-      map({ 'i', 'n' }, '<C-a>', function()
-        local e = astate.get_selected_entry(); actions.close(pb)
-        if e then run_with_args(e.value) end
-      end)
-      map({ 'i', 'n' }, '<C-o>', function()
-        local e = astate.get_selected_entry(); actions.close(pb)
-        if e then open_file(e.value) end
-      end)
-      return true
-    end,
-  }):find()
+      ['<C-a>'] = function(it) run_with_args(it.cmd) end,
+      ['<C-o>'] = function(it) open_file(it.cmd) end,
+    },
+  }
 end
 
 return M
