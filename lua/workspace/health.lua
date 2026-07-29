@@ -27,11 +27,11 @@ M.check = function()
     vim.health.warn 'git not found (commit/PR features disabled)'
   end
 
-  -- Telescope
-  if pcall(require, 'telescope') then
-    vim.health.ok 'telescope.nvim loaded'
+  -- Fuzzy finder (native picker)
+  if vim.fn.executable 'rg' == 1 or vim.fn.executable 'fd' == 1 then
+    vim.health.ok 'ripgrep/fd found (file & grep pickers)'
   else
-    vim.health.warn 'telescope.nvim not loaded (some pickers disabled)'
+    vim.health.warn 'neither rg nor fd found — file/grep pickers fall back to vimglob/off'
   end
 
   -- CLAUDE.md

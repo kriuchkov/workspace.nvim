@@ -1,31 +1,27 @@
 local map = vim.keymap.set
 
--- ── trouble ───────────────────────────────────────────────────────────────────
--- Structured panel for diagnostics, references, quickfix.
+-- ── Diagnostics & panels (native) ─────────────────────────────────────────────
+-- No external plugin: the structured diagnostics/symbols lists are our own
+-- sidebar panels (diag_panel / outline), and quickfix / location lists are
+-- Neovim built-ins. Replaces trouble.nvim.
 
-vim.pack.add { 'https://github.com/folke/trouble.nvim' }
-if pcall(require, 'trouble') then
-  require('trouble').setup {
-    modes = {
-      symbols = {
-        win = { position = 'right', size = 0.25 },
-      },
-    },
-  }
-end
+local sidebar = require 'workspace.sidebar'
 
-map('n', '<leader>xx', '<cmd>Trouble diagnostics toggle<cr>',
-  { desc = 'Diagnostics: all',    silent = true })
-map('n', '<leader>xb', '<cmd>Trouble diagnostics toggle filter.buf=0<cr>',
-  { desc = 'Diagnostics: buffer', silent = true })
-map('n', '<leader>xs', '<cmd>Trouble symbols toggle focus=false<cr>',
-  { desc = 'Symbols panel',       silent = true })
-map('n', '<leader>xl', '<cmd>Trouble lsp toggle focus=false win.position=right<cr>',
-  { desc = 'LSP panel',           silent = true })
-map('n', '<leader>xq', '<cmd>Trouble qflist toggle<cr>',
-  { desc = 'Quickfix',            silent = true })
-map('n', '<leader>xL', '<cmd>Trouble loclist toggle<cr>',
-  { desc = 'Location list',       silent = true })
+-- Workspace-wide diagnostics list in the sidebar panel (toggles on repeat).
+map('n', '<leader>xx', function() sidebar.select 'diagnostics' end,
+  { desc = 'Diagnostics: panel',         silent = true })
+-- Current-buffer diagnostics into the location list.
+map('n', '<leader>xb', function() vim.diagnostic.setloclist() end,
+  { desc = 'Diagnostics: buffer (loclist)', silent = true })
+-- Document symbols in the sidebar outline panel (toggles on repeat).
+map('n', '<leader>xs', function() sidebar.select 'outline' end,
+  { desc = 'Symbols panel',              silent = true })
+-- LSP references for the symbol under the cursor.
+map('n', '<leader>xl', function() require('workspace.lsp_reflens').open_references() end,
+  { desc = 'LSP: references',            silent = true })
+-- Quickfix / location list windows (native).
+map('n', '<leader>xq', '<cmd>botright copen<cr>', { desc = 'Quickfix list',  silent = true })
+map('n', '<leader>xL', '<cmd>lopen<cr>',          { desc = 'Location list', silent = true })
 
 -- ── grug-far ──────────────────────────────────────────────────────────────────
 -- Search & replace across the project with live preview before applying.

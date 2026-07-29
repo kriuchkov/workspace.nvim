@@ -529,35 +529,13 @@ function M.toc()
   local hs = headings(api.nvim_get_current_buf())
   if #hs == 0 then vim.notify('No headings in this file', vim.log.levels.INFO); return end
   local function label(h) return ('  '):rep(h.level - 1) .. h.text end
-  local function jump(h) api.nvim_win_set_cursor(0, { h.lnum, 0 }); vim.cmd 'normal! zz' end
-
-  local ok, pickers = pcall(require, 'telescope.pickers')
-  if not ok then
-    vim.ui.select(hs, { prompt = 'TOC', format_item = label },
-      function(h) if h then jump(h) end end)
-    return
-  end
-  local finders      = require('telescope.finders')
-  local conf         = require('telescope.config').values
-  local actions      = require('telescope.actions')
-  local astate       = require('telescope.actions.state')
-  pickers.new({}, {
-    prompt_title = 'Table of contents',
-    finder = finders.new_table {
-      results = hs,
-      entry_maker = function(h)
-        return { value = h, display = label(h), ordinal = h.text, lnum = h.lnum }
-      end,
-    },
-    sorter = conf.generic_sorter {},
-    attach_mappings = function(pb)
-      actions.select_default:replace(function()
-        local e = astate.get_selected_entry(); actions.close(pb)
-        if e then jump(e.value) end
-      end)
-      return true
-    end,
-  }):find()
+  local items = {}
+  for _, h in ipairs(hs) do items[#items + 1] = { text = label(h), lnum = h.lnum } end
+  require('workspace.picker').open {
+    title = 'Table of contents',
+    items = items,
+    on_select = function(it) api.nvim_win_set_cursor(0, { it.lnum, 0 }); vim.cmd 'normal! zz' end,
+  }
 end
 
 -- ── Yank the fenced code block under the cursor ───────────────────────────────

@@ -1,15 +1,15 @@
 -- Command palette: filterable list of all workspace actions.
--- <leader>P opens it; uses vim.ui.select so telescope enhances it automatically.
+-- <leader>P opens it; uses vim.ui.select, backed by the native workspace.picker.
 local M = {}
 
 local ACTIONS = {
   -- File
-  { group = 'File',      label = 'Find files',              keys = '<leader>ff', action = function() vim.cmd 'Telescope find_files' end },
-  { group = 'File',      label = 'Live grep',               keys = '<leader>fg', action = function() vim.cmd 'Telescope live_grep' end },
+  { group = 'File',      label = 'Find files',              keys = '<leader>ff', action = function() require('workspace.picker').files() end },
+  { group = 'File',      label = 'Live grep',               keys = '<leader>fg', action = function() require('workspace.picker').grep() end },
   { group = 'File',      label = 'Live grep (glob scoped)',  keys = '<leader>fG', action = function() require('workspace.search').live_grep_glob() end },
   { group = 'File',      label = 'Live grep (active repo)',  keys = '<leader>fR', action = function() require('workspace.search').live_grep_repo() end },
-  { group = 'File',      label = 'Recent files',            keys = '<leader>fr', action = function() vim.cmd 'Telescope oldfiles' end },
-  { group = 'File',      label = 'Buffers',                 keys = '<leader>fb', action = function() vim.cmd 'Telescope buffers' end },
+  { group = 'File',      label = 'Recent files',            keys = '<leader>fr', action = function() require('workspace.picker').oldfiles() end },
+  { group = 'File',      label = 'Buffers',                 keys = '<leader>fb', action = function() require('workspace.picker').buffers() end },
   { group = 'File',      label = 'Search/replace (word)',   keys = '<leader>sr', action = function() require('grug-far').open { prefills = { search = vim.fn.expand '<cword>' } } end },
   { group = 'File',      label = 'Search/replace',          keys = '<leader>sR', action = function() require('grug-far').open() end },
   -- Workspace
@@ -23,8 +23,8 @@ local ACTIONS = {
   { group = 'Panel',     label = 'Outline: toggle',         keys = '<leader>xo', action = function() require('workspace.outline').toggle() end },
   { group = 'Panel',     label = 'Marks',                   keys = '<leader>M',  action = function() require('workspace.marks').show() end },
   { group = 'Panel',     label = 'Notifications',           keys = '<leader>N',  action = function() require('workspace.notify').open() end },
-  { group = 'Panel',     label = 'Diagnostics',             keys = '<leader>xx', action = function() vim.cmd 'Trouble diagnostics toggle' end },
-  { group = 'Panel',     label = 'Symbols panel',           keys = '<leader>xs', action = function() vim.cmd 'Trouble symbols toggle focus=false' end },
+  { group = 'Panel',     label = 'Diagnostics',             keys = '<leader>xx', action = function() require('workspace.sidebar').select 'diagnostics' end },
+  { group = 'Panel',     label = 'Symbols panel',           keys = '<leader>xs', action = function() require('workspace.sidebar').select 'outline' end },
   -- Git
   { group = 'Git',       label = 'Git: staging panel',      keys = '<leader>gG', action = function() require('workspace.git_ui').open() end },
   { group = 'Git',       label = 'Git: lazygit',            keys = '<leader>gg', action = function() vim.cmd 'LazyGit' end },

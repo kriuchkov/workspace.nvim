@@ -53,7 +53,6 @@ else
     "workspace.claude.commands"
     "workspace.claude.dashboard"
     "workspace.claude.agents"
-    "workspace.claude.status"
     "workspace.claude.context"
     "workspace.claude.git_ops"
     "workspace.claude.codegen"

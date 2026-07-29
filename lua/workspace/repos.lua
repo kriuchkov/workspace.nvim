@@ -576,19 +576,17 @@ end
 -- Fuzzy-find files scoped to a single repo (defaults to the active one).
 function M.find_files(member)
   member = scoped_member(member)
-  local ok, tb = pcall(require, 'telescope.builtin')
-  if not ok then vim.notify('telescope required for file search', vim.log.levels.WARN); return end
   in_editor()
-  tb.find_files({ cwd = member.abspath, prompt_title = 'Files in ' .. (member.label or '?') })
+  require('workspace.picker').files { cwd = member.abspath,
+    title = 'Files · ' .. (member.label or '?') }
 end
 
 -- Live-grep scoped to a single repo (defaults to the active one).
 function M.grep_files(member)
   member = scoped_member(member)
-  local ok, tb = pcall(require, 'telescope.builtin')
-  if not ok then vim.notify('telescope required for grep', vim.log.levels.WARN); return end
   in_editor()
-  tb.live_grep({ cwd = member.abspath, prompt_title = 'Grep in ' .. (member.label or '?') })
+  require('workspace.picker').grep { cwd = member.abspath,
+    title = 'Grep · ' .. (member.label or '?') }
 end
 
 -- ── Setup ─────────────────────────────────────────────────────────────────────

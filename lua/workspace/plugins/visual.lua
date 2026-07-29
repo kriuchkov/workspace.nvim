@@ -30,7 +30,7 @@ end
 
 -- ── todo-comments ─────────────────────────────────────────────────────────────
 -- Highlights TODO/FIXME/HACK/NOTE/WARN/PERF in comments.
--- Integrates with Telescope and Trouble.
+-- Lists via the sidebar TODO panel (<leader>xt) and a fuzzy picker (:TodoSearch).
 
 local tc = require 'workspace.todo_comments'
 tc.setup {
@@ -62,7 +62,7 @@ map('n', '[t', tc.jump_prev, { desc = 'Prev TODO',  silent = true })
 -- sync (calling tc.workspace directly bypasses S.active and can't close).
 map('n', '<leader>xt', function() require('workspace.sidebar').select 'todo' end,
   { desc = 'TODOs list', silent = true })
-map('n', '<leader>ft', '<cmd>TodoTelescope<cr>',
+map('n', '<leader>ft', '<cmd>TodoSearch<cr>',
   { desc = 'Find TODOs',  silent = true })
 
 -- ── yanky: clipboard ring ─────────────────────────────────────────────────────

@@ -281,31 +281,33 @@ function M.toggle_auto()
   if M.config.auto then do_show(false) else clear(vim.api.nvim_get_current_buf()) end
 end
 
--- Список всех использований символа под курсором с превью кода.
--- Telescope даёт панель предпросмотра (контекст вокруг каждой ссылки) + fuzzy-фильтр;
--- Enter — переход. Без telescope откатываемся на quickfix.
-function M.open_references()
-  local ok, tb = pcall(require, 'telescope.builtin')
-  if ok then
-    tb.lsp_references {
-      include_declaration = false,
-      jump_type = 'default',
-      fname_width = 60,
+-- Native fuzzy picker over a list of quickfix-shaped items ({filename|bufnr,
+-- lnum, col, text}), with a code preview. <CR> opens in the center window.
+local function qf_picker(title, items)
+  local picker  = require 'workspace.picker'
+  local wrapped = {}
+  for _, it in ipairs(items) do
+    local path = it.filename or (it.bufnr and vim.api.nvim_buf_get_name(it.bufnr)) or ''
+    wrapped[#wrapped + 1] = {
+      text = string.format('%s:%d  %s', vim.fn.fnamemodify(path, ':.'), it.lnum or 1,
+        vim.trim(it.text or '')),
+      path = path, lnum = it.lnum, col = it.col,
     }
-    return
   end
+  picker.open {
+    title = title, items = wrapped, preview = picker.file_preview,
+    on_select = function(w) picker.open_file(w.path, w.lnum, w.col) end,
+  }
+end
 
+-- Список всех использований символа под курсором с превью кода. Enter — переход.
+function M.open_references()
   vim.lsp.buf.references({ includeDeclaration = false }, {
-    on_list = function(opts)
-      vim.fn.setqflist({}, ' ', opts)
-      vim.cmd 'botright copen'
-      local qf = vim.api.nvim_get_current_buf()
-      vim.keymap.set('n', '<CR>', function()
-        local idx = vim.fn.line '.'
-        vim.cmd 'cclose'
-        vim.cmd(idx .. 'cc')
-      end, { buffer = qf, nowait = true, silent = true, desc = 'Jump & close' })
-      vim.keymap.set('n', 'q', '<cmd>cclose<cr>', { buffer = qf, nowait = true, silent = true })
+    on_list = function(o)
+      if not o.items or #o.items == 0 then
+        vim.notify('No references', vim.log.levels.INFO); return
+      end
+      qf_picker(o.title or 'References', o.items)
     end,
   })
 end
@@ -322,20 +324,7 @@ function M.struct_methods()
     return
   end
   local title = name .. ' methods (' .. #list .. ')'
-  vim.fn.setqflist({}, ' ', { title = title, items = list })
-  local ok, tb = pcall(require, 'telescope.builtin')
-  if ok then
-    tb.quickfix { prompt_title = title }
-  else
-    vim.cmd 'botright copen'
-    local qf = vim.api.nvim_get_current_buf()
-    vim.keymap.set('n', '<CR>', function()
-      local idx = vim.fn.line '.'
-      vim.cmd 'cclose'
-      vim.cmd(idx .. 'cc')
-    end, { buffer = qf, nowait = true, silent = true, desc = 'Jump & close' })
-    vim.keymap.set('n', 'q', '<cmd>cclose<cr>', { buffer = qf, nowait = true, silent = true })
-  end
+  qf_picker(title, list)
 end
 
 M._decl_kind    = decl_kind     -- test seam

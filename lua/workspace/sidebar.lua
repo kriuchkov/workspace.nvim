@@ -41,7 +41,7 @@ local VIEWS = {
     close = function() require('workspace.diag_panel').close() end,
     badge = diag_errors, badge_hl = 'CSAbBadgeErr' },
   { id = 'buffers', icon = ic(0xf0c5), label = 'Buffers', kind = 'launch',
-    run = function() pcall(vim.cmd, 'Telescope buffers') end },
+    run = function() require('workspace.picker').buffers() end },
   { id = 'tests', icon = ic(0xf0c3), label = 'Tests', kind = 'launch',
     run = function() require('workspace.test_ui').run() end },
   { id = 'todo', icon = ic(0xf046), label = 'TODO', kind = 'panel',

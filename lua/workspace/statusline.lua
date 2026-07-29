@@ -110,13 +110,6 @@ function M.render()
     end
   end
 
-  -- Claude sessions + connection
-  local ok_cs, cs = pcall(require, 'workspace.claude.status')
-  if ok_cs then
-    local s = cs.component()
-    if s ~= '' then hl(t, 'CSClaude', s .. '  ') end
-  end
-
   -- Filetype
   if ft ~= '' then hl(t, 'CSInfo', ft .. '  ') end
 
@@ -170,7 +163,6 @@ local function setup_highlights()
   hi(0, 'CSErr',    { fg = c.error })
   hi(0, 'CSWarn',   { fg = c.warn })
   hi(0, 'CSWorkspace', { fg = c.purple, bold = true })
-  hi(0, 'CSClaude', { fg = c.blue })
   hi(0, 'CSLsp',    { fg = c.cyan })
   hi(0, 'CSInfo',   { fg = c.fg_dim })
   hi(0, 'CSDebug',  { fg = c.orange, bold = true })

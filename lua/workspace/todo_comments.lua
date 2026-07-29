@@ -1,4 +1,4 @@
--- TODO/FIXME/HACK comment highlighting + jumping + telescope search.
+-- TODO/FIXME/HACK comment highlighting + jumping + fuzzy search picker.
 
 -- ── Util ─────────────────────────────────────────────────────────────────────
 
@@ -455,7 +455,7 @@ end
 function Jump.next(opts) do_jump(false, opts) end
 function Jump.prev(opts) do_jump(true,  opts) end
 
--- ── Search / Telescope ────────────────────────────────────────────────────────
+-- ── Search (ripgrep) ──────────────────────────────────────────────────────────
 
 local Search = {}
 
@@ -528,47 +528,31 @@ function Search.setlist(opts, loc)
   end, opts)
 end
 
--- ── Telescope extension ───────────────────────────────────────────────────────
+-- ── Fuzzy search picker (native) ──────────────────────────────────────────────
 
-local function register_telescope()
-  local ok, telescope = pcall(require, 'telescope')
-  if not ok then return end
-  local make_entry = require 'telescope.make_entry'
-  local pickers    = require 'telescope.builtin'
-
-  local function todo_picker(opts)
-    opts = opts or {}
-    opts.vimgrep_arguments = { Config.options.search.command }
-    vim.list_extend(opts.vimgrep_arguments, Config.options.search.args)
-    opts.search      = Config.search_regex(kw_filter(opts.keywords))
-    opts.prompt_title = 'Find Todo'
-    opts.use_regex   = true
-    local base_maker = make_entry.gen_from_vimgrep(opts)
-    opts.entry_maker = function(line)
-      local ret = base_maker(line)
-      ret.display = function(entry)
-        local disp = ('%s:%s:%s '):format(entry.filename, entry.lnum, entry.col)
-        local text = entry.text
-        local s, finish, kw = Highlight.match(text)
-        local hl = {}
-        if s then
-          kw = Config.keywords[kw] or kw
-          local icon = (Config.options.keywords[kw] or {}).icon or ' '
-          disp = icon .. ' ' .. disp
-          table.insert(hl, { { 0, #icon + 1 }, 'TodoFg' .. kw })
-          text = vim.trim(text:sub(s))
-          table.insert(hl, { { #disp, #disp + finish - s + 2 }, 'TodoBg' .. kw })
-          table.insert(hl, { { #disp + finish - s + 1, #disp + finish + 1 + #text }, 'TodoFg' .. kw })
-          disp = disp .. ' ' .. text
-        end
-        return disp, hl
-      end
-      return ret
+-- Fuzzy-filterable list of every TODO across the workspace, with a file preview.
+-- <CR> opens the match in the center window.
+function Search.picker(opts)
+  opts = parse_opts(opts) or {}
+  Search.search(function(results)
+    if #results == 0 then Util.warn 'no todos found'; return end
+    local picker = require 'workspace.picker'
+    local items = {}
+    for _, r in ipairs(results) do
+      local icon = (r.tag and (Config.options.keywords[r.tag] or {}).icon) or ''
+      items[#items + 1] = {
+        text = string.format('%s %s:%d  %s', vim.trim(icon),
+          vim.fn.fnamemodify(r.filename, ':.'), r.lnum, r.message or r.text or ''),
+        path = r.filename, lnum = r.lnum, col = r.col,
+      }
     end
-    pickers.grep_string(opts)
-  end
-
-  telescope.register_extension { exports = { ['todo-comments'] = todo_picker, todo = todo_picker } }
+    picker.open {
+      title = 'Find TODO',
+      items = items,
+      preview = picker.file_preview,
+      on_select = function(it) picker.open_file(it.path, it.lnum, it.col) end,
+    }
+  end, opts)
 end
 
 -- ── Public API ────────────────────────────────────────────────────────────────
@@ -577,19 +561,10 @@ local M = {}
 
 function M.setup(opts)
   Config.setup(opts)
-  register_telescope()
-  -- register user commands matching the original plugin
-  vim.api.nvim_create_user_command('TodoQuickFix',   function(o) Search.setqflist(o.args)  end, { nargs = '?' })
-  vim.api.nvim_create_user_command('TodoLocList',    function(o) Search.setloclist(o.args) end, { nargs = '?' })
-  vim.api.nvim_create_user_command('TodoTelescope',  function(o)
-    require('telescope').extensions['todo-comments'].todo(parse_opts(o.args) or {})
-  end, { nargs = '?' })
-  vim.api.nvim_create_user_command('TodoTrouble',    function()
-    require('trouble').open { mode = 'todo', focus = true }
-  end, {})
-  vim.api.nvim_create_user_command('WSTodos', function(o)
-    M.workspace(parse_opts(o.args))
-  end, { nargs = '?' })
+  vim.api.nvim_create_user_command('TodoQuickFix', function(o) Search.setqflist(o.args)  end, { nargs = '?' })
+  vim.api.nvim_create_user_command('TodoLocList',  function(o) Search.setloclist(o.args) end, { nargs = '?' })
+  vim.api.nvim_create_user_command('TodoSearch',   function(o) Search.picker(o.args)     end, { nargs = '?' })
+  vim.api.nvim_create_user_command('WSTodos',      function(o) M.workspace(parse_opts(o.args)) end, { nargs = '?' })
 end
 
 M.jump_next = Jump.next

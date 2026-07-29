@@ -174,13 +174,6 @@ function M.setup()
     { silent = true, desc = 'Tasks: lint' })
   map('n', '<leader>rx', function() M.run('run') end,
     { silent = true, desc = 'Tasks: run' })
-
-  vim.schedule(function()
-    local ok, wk = pcall(require, 'which-key')
-    if ok and wk.add then
-      wk.add({ { '<leader>r', group = 'Run/Tasks' } })
-    end
-  end)
 end
 
 return M

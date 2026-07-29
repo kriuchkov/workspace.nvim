@@ -121,40 +121,18 @@ local function show(syms)
     return (KIND_ICON[s.kind] or ' ') .. '  ' .. s.name
         .. '   ' .. (KIND_NAME[s.kind] or '') .. '  :' .. s.lnum
   end
-  local ok, pickers = pcall(require, 'telescope.pickers')
-  if not ok then
-    vim.ui.select(syms, { prompt = 'Functions & structures', format_item = fmt },
-      function(s) if s then jump(s) end end)
-    return
+  local picker = require 'workspace.picker'
+  local fname  = vim.api.nvim_buf_get_name(0)
+  local items  = {}
+  for _, s in ipairs(syms) do
+    items[#items + 1] = { text = fmt(s), path = fname, lnum = s.lnum, col = s.col }
   end
-  local finders      = require('telescope.finders')
-  local conf         = require('telescope.config').values
-  local actions      = require('telescope.actions')
-  local astate       = require('telescope.actions.state')
-  local fname        = vim.api.nvim_buf_get_name(0)
-  pickers.new({}, {
-    prompt_title = 'Functions & structures',
-    finder = finders.new_table {
-      results = syms,
-      entry_maker = function(s)
-        return {
-          value = s, display = fmt(s),
-          ordinal = (KIND_NAME[s.kind] or '') .. ' ' .. s.name,
-          filename = fname, lnum = s.lnum, col = s.col,
-        }
-      end,
-    },
-    sorter = conf.generic_sorter {},
-    previewer = conf.grep_previewer {},
-    attach_mappings = function(pb)
-      actions.select_default:replace(function()
-        local e = astate.get_selected_entry()
-        actions.close(pb)
-        if e then jump(e.value) end
-      end)
-      return true
-    end,
-  }):find()
+  picker.open {
+    title = 'Functions & structures',
+    items = items,
+    preview = picker.file_preview,
+    on_select = function(it) jump(it) end,
+  }
 end
 
 local function pick_treesitter()
