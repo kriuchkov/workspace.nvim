@@ -183,10 +183,11 @@ local function refilter_static()
 end
 
 local function run_dynamic()
+  local self = P                     -- identity: a result from a closed picker must not land in its successor
   local q = P.query
   if P.cancel then pcall(P.cancel); P.cancel = nil end
   P.cancel = P.dynamic(q, vim.schedule_wrap(function(items)
-    if not P then return end
+    if P ~= self then return end
     P.matches = items or {}
     P.sel = 1
     render()
@@ -324,8 +325,9 @@ function M.open(opts)
     P.items = wrap_items(opts.items)
     refilter_static()
   elseif opts.load then
+    local self = P                   -- identity: guard against a late load landing in a later picker
     opts.load(vim.schedule_wrap(function(list)
-      if not P then return end
+      if P ~= self then return end
       P.items = wrap_items(list)
       refilter_static()
     end))
@@ -401,7 +403,7 @@ function M.files(opts)
         end
         cb(items); return
       end
-      vim.system(cmd, { text = true, cwd = cwd }, function(res)
+      local obj = vim.system(cmd, { text = true, cwd = cwd }, function(res)
         local items = {}
         for line in (res.stdout or ''):gmatch '[^\n]+' do
           local ic, hl = file_icon(line)
@@ -409,6 +411,8 @@ function M.files(opts)
         end
         cb(items)
       end)
+      -- close() cancels this so a slow listing can't outlive the picker.
+      if P then P.cancel = function() pcall(function() obj:kill(9) end) end end
     end,
   }
 end
